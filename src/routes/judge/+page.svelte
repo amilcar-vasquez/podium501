@@ -2,6 +2,7 @@
 	import type { PageData } from './$types';
 	import type { Team, Challenge } from '$lib/types';
 	import Snackbar from '$lib/components/Snackbar.svelte';
+	import { onMount } from 'svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -12,12 +13,69 @@
 
 	let selectedChallenge: Challenge | null = $state(null);
 	let selectedTeam: Team | null = $state(null);
-	let judgeName = $state('Judge');
 	let step: 1 | 2 | 3 = $state(1);
+
+	// --- PIN authentication ---
+	const PIN_KEY = 'podium501_judge_pin';
+	const NAME_KEY = 'podium501_judge_name';
+
+	let mounted = $state(false);
+	let pinVerified = $state(false);
+	let judgeName = $state('');
+	let pinInput = $state('');
+	let pinError = $state('');
+	let isVerifying = $state(false);
 
 	let snackbar: Snackbar;
 
-	// Audio feedback
+	onMount(() => {
+		mounted = true;
+		const storedPin = localStorage.getItem(PIN_KEY);
+		const storedName = localStorage.getItem(NAME_KEY);
+		if (storedPin && storedName) {
+			judgeName = storedName;
+			pinVerified = true;
+		}
+	});
+
+	async function verifyPin() {
+		const pin = pinInput.trim();
+		if (!pin) return;
+		isVerifying = true;
+		pinError = '';
+		try {
+			const res = await fetch('/api/judge-login', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ pin })
+			});
+			const result = await res.json();
+			if (result.success) {
+				localStorage.setItem(PIN_KEY, pin);
+				localStorage.setItem(NAME_KEY, result.judgeName);
+				judgeName = result.judgeName;
+				pinVerified = true;
+			} else {
+				pinError = 'Invalid PIN. Try again.';
+				pinInput = '';
+			}
+		} catch {
+			pinError = 'Connection error. Try again.';
+		} finally {
+			isVerifying = false;
+		}
+	}
+
+	function logout() {
+		localStorage.removeItem(PIN_KEY);
+		localStorage.removeItem(NAME_KEY);
+		pinVerified = false;
+		pinInput = '';
+		judgeName = '';
+		reset();
+	}
+
+	// --- Audio feedback ---
 	function playBeep(type: 'add' | 'subtract') {
 		try {
 			const ctx = new AudioContext();
@@ -62,10 +120,12 @@
 
 	async function undoLast() {
 		if (!selectedTeam || !selectedChallenge) return;
-		const res = await fetch(
-			`/api/scores/undo?team_id=${selectedTeam.id}&challenge_id=${selectedChallenge.id}`,
-			{ method: 'DELETE' }
-		);
+		const params = new URLSearchParams({
+			team_id: String(selectedTeam.id),
+			challenge_id: String(selectedChallenge.id),
+			judge: judgeName
+		});
+		const res = await fetch(`/api/scores/undo?${params}`, { method: 'DELETE' });
 		if (res.ok) {
 			snackbar.show('↩ Last score undone');
 		} else {
@@ -94,106 +154,210 @@
 	<title>Judge — Podium501</title>
 </svelte:head>
 
-<div class="judge-page">
-	<div class="header">
-		<h1 class="page-title">⚖️ Judge</h1>
-		<div class="field" style="max-width: 200px; margin-bottom: 0;">
-			<label for="judge-name">Your name</label>
-			<input id="judge-name" bind:value={judgeName} placeholder="Judge name" />
+{#if !mounted}
+	<!-- Prevent flash of wrong content during SSR hydration -->
+	<div class="loading-gate"></div>
+{:else if !pinVerified}
+	<!-- PIN Login Screen -->
+	<div class="pin-screen">
+		<div class="pin-card card">
+			<div class="pin-icon">⚖️</div>
+			<h1 class="pin-title">Judge Access</h1>
+			<p class="pin-subtitle">Enter your PIN to continue</p>
+			<div class="field">
+				<label for="pin-input">Judge PIN</label>
+				<!-- svelte-ignore a11y_autofocus -->
+				<input
+					id="pin-input"
+					type="password"
+					bind:value={pinInput}
+					placeholder="••••"
+					inputmode="numeric"
+					autocomplete="off"
+					autofocus
+					onkeydown={(e) => e.key === 'Enter' && verifyPin()}
+				/>
+			</div>
+			{#if pinError}
+				<p class="pin-error" role="alert">{pinError}</p>
+			{/if}
+			<button
+				class="btn btn-primary pin-btn"
+				onclick={verifyPin}
+				disabled={isVerifying || !pinInput.trim()}
+			>
+				{isVerifying ? 'Verifying…' : 'Continue'}
+			</button>
 		</div>
 	</div>
-
-	<!-- Breadcrumb -->
-	<div class="breadcrumb">
-		<button onclick={reset} class:active={step === 1}>1. Challenge</button>
-		<span>›</span>
-		<button onclick={() => { if (step === 3) step = 2; }} class:active={step === 2} disabled={step < 2}>
-			2. Team
-		</button>
-		<span>›</span>
-		<button class:active={step === 3} disabled={step < 3}>3. Score</button>
-	</div>
-
-	<!-- Step 1: Select Challenge -->
-	{#if step === 1}
-		<section>
-			<p class="step-hint">Select a challenge to judge:</p>
-			{#if challenges.length === 0}
-				<p class="empty">No challenges yet. <a href="/admin">Add one in Admin</a>.</p>
-			{:else}
-				<div class="grid">
-					{#each challenges as c}
-						<button class="pick-card" onclick={() => selectChallenge(c)}>
-							<span class="pick-title">{c.name}</span>
-							{#if c.description}
-								<span class="pick-sub">{c.description}</span>
-							{/if}
-						</button>
-					{/each}
-				</div>
-			{/if}
-		</section>
-	{/if}
-
-	<!-- Step 2: Select Team -->
-	{#if step === 2}
-		<section>
-			<p class="step-hint">Challenge: <strong>{selectedChallenge?.name}</strong> — Select team:</p>
-			{#if teams.length === 0}
-				<p class="empty">No teams yet. <a href="/admin">Add one in Admin</a>.</p>
-			{:else}
-				<div class="grid">
-					{#each teams as t}
-						<button
-							class="pick-card team-card"
-							style="border-left: 6px solid {t.color};"
-							onclick={() => selectTeam(t)}
-						>
-							<span class="pick-title">{t.name}</span>
-							<span class="pick-sub">{t.school}</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
-		</section>
-	{/if}
-
-	<!-- Step 3: Score -->
-	{#if step === 3}
-		<section>
-			<div class="score-context card">
-				<div class="score-badge" style="background: {selectedTeam?.color};">
-					{selectedTeam?.name[0]}
-				</div>
-				<div>
-					<div class="score-team">{selectedTeam?.name}</div>
-					<div class="score-school">{selectedTeam?.school}</div>
-					<div class="score-challenge">📋 {selectedChallenge?.name}</div>
-				</div>
+{:else}
+	<!-- Judge Scoring Interface -->
+	<div class="judge-page">
+		<div class="header">
+			<h1 class="page-title">⚖️ Judge</h1>
+			<div class="judge-info">
+				<span class="judge-badge">👤 {judgeName}</span>
+				<button class="btn btn-sm btn-secondary logout-btn" onclick={logout}>Log out</button>
 			</div>
+		</div>
 
-			<div class="score-buttons">
-				{#each SCORE_BUTTONS as btn}
-					<button
-						class="score-btn"
-						style="background: {btn.color};"
-						onclick={() => addScore(btn.points)}
-					>
-						{btn.label}
-					</button>
-				{/each}
-			</div>
-
-			<button class="btn btn-secondary undo-btn" onclick={undoLast}>
-				↩ Undo Last
+		<!-- Breadcrumb -->
+		<div class="breadcrumb">
+			<button onclick={reset} class:active={step === 1}>1. Challenge</button>
+			<span>›</span>
+			<button
+				onclick={() => {
+					if (step === 3) step = 2;
+				}}
+				class:active={step === 2}
+				disabled={step < 2}
+			>
+				2. Team
 			</button>
-		</section>
-	{/if}
-</div>
+			<span>›</span>
+			<button class:active={step === 3} disabled={step < 3}>3. Score</button>
+		</div>
+
+		<!-- Step 1: Select Challenge -->
+		{#if step === 1}
+			<section>
+				<p class="step-hint">Select a challenge to judge:</p>
+				{#if challenges.length === 0}
+					<p class="empty">No challenges yet. <a href="/admin">Add one in Admin</a>.</p>
+				{:else}
+					<div class="grid">
+						{#each challenges as c}
+							<button class="pick-card" onclick={() => selectChallenge(c)}>
+								<span class="pick-title">{c.name}</span>
+								{#if c.description}
+									<span class="pick-sub">{c.description}</span>
+								{/if}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</section>
+		{/if}
+
+		<!-- Step 2: Select Team -->
+		{#if step === 2}
+			<section>
+				<p class="step-hint">
+					Challenge: <strong>{selectedChallenge?.name}</strong> — Select team:
+				</p>
+				{#if teams.length === 0}
+					<p class="empty">No teams yet. <a href="/admin">Add one in Admin</a>.</p>
+				{:else}
+					<div class="grid">
+						{#each teams as t}
+							<button
+								class="pick-card team-card"
+								style="border-left: 6px solid {t.color};"
+								onclick={() => selectTeam(t)}
+							>
+								<span class="pick-title">{t.name}</span>
+								<span class="pick-sub">{t.school}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</section>
+		{/if}
+
+		<!-- Step 3: Score -->
+		{#if step === 3}
+			<section>
+				<div class="score-context card">
+					<div class="score-badge" style="background: {selectedTeam?.color};">
+						{selectedTeam?.name[0]}
+					</div>
+					<div>
+						<div class="score-team">{selectedTeam?.name}</div>
+						<div class="score-school">{selectedTeam?.school}</div>
+						<div class="score-challenge">📋 {selectedChallenge?.name}</div>
+					</div>
+				</div>
+
+				<div class="score-buttons">
+					{#each SCORE_BUTTONS as btn}
+						<button
+							class="score-btn"
+							style="background: {btn.color};"
+							onclick={() => addScore(btn.points)}
+						>
+							{btn.label}
+						</button>
+					{/each}
+				</div>
+
+				<button class="btn btn-secondary undo-btn" onclick={undoLast}>
+					↩ Undo Last
+				</button>
+			</section>
+		{/if}
+	</div>
+{/if}
 
 <Snackbar bind:this={snackbar} />
 
 <style>
+	/* --- Loading gate (prevents SSR flash) --- */
+	.loading-gate {
+		min-height: 60vh;
+	}
+
+	/* --- PIN Screen --- */
+	.pin-screen {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 70vh;
+		padding: 1rem;
+	}
+
+	.pin-card {
+		width: 100%;
+		max-width: 360px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 1rem;
+		text-align: center;
+		padding: 2rem;
+	}
+
+	.pin-icon {
+		font-size: 3rem;
+	}
+
+	.pin-title {
+		font-size: 1.6rem;
+		font-weight: 700;
+		color: #eaddff;
+	}
+
+	.pin-subtitle {
+		color: var(--md-on-surface-variant);
+		font-size: 0.95rem;
+	}
+
+	.pin-card .field {
+		width: 100%;
+		margin-bottom: 0;
+	}
+
+	.pin-error {
+		color: var(--md-error);
+		font-size: 0.9rem;
+	}
+
+	.pin-btn {
+		width: 100%;
+		font-size: 1.1rem;
+		padding: 0.875rem;
+	}
+
+	/* --- Judge Interface --- */
 	.judge-page {
 		max-width: 600px;
 		margin: 0 auto;
@@ -201,11 +365,30 @@
 
 	.header {
 		display: flex;
-		align-items: flex-end;
+		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
 		flex-wrap: wrap;
 		margin-bottom: 1rem;
+	}
+
+	.judge-info {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.judge-badge {
+		font-size: 0.95rem;
+		color: #eaddff;
+		background: #3b3549;
+		padding: 0.35rem 0.75rem;
+		border-radius: var(--radius-lg);
+	}
+
+	.logout-btn {
+		font-size: 0.8rem;
+		padding: 0.35rem 0.75rem;
 	}
 
 	.breadcrumb {

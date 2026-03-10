@@ -5,11 +5,18 @@
 	import { animateValue } from '$lib/utils/scoreAnimation';
 	import ScorePopup from '$lib/components/ScorePopup.svelte';
 
+	interface ChallengeScore {
+		challenge_id: number;
+		challenge_name: string;
+		points: number;
+	}
+
 	interface DisplayEntry extends LeaderboardEntry {
 		displayTotal: number;
 		delta: number | null;
 		flash: boolean;
 		popupKey: number;
+		challenges: ChallengeScore[];
 	}
 
 	let displayEntries: DisplayEntry[] = $state([]);
@@ -24,21 +31,37 @@
 
 	async function fetchLeaderboard() {
 		try {
-			const res = await fetch('/api/leaderboard');
+			const [res, bRes] = await Promise.all([
+				fetch('/api/leaderboard'),
+				fetch('/api/scores/breakdown')
+			]);
 			const serverData: LeaderboardEntry[] = await res.json();
+			const breakdown: ChallengeScore[] & { team_id: number }[] = await bRes.json();
+
+			// Group breakdown by team_id
+			const bMap = new Map<number, ChallengeScore[]>();
+			for (const row of breakdown) {
+				if (!bMap.has(row.team_id)) bMap.set(row.team_id, []);
+				bMap.get(row.team_id)!.push({
+					challenge_id: row.challenge_id,
+					challenge_name: row.challenge_name,
+					points: row.points
+				});
+			}
 
 			for (const entry of serverData) {
 				const prev = prevTotals.get(entry.team_id);
 				const didChange = prev !== undefined && prev !== entry.total;
 				const existing = displayEntries.find((e) => e.team_id === entry.team_id);
 
-				if (!existing) {
+					if (!existing) {
 					displayEntries.push({
 						...entry,
 						displayTotal: entry.total,
 						delta: null,
 						flash: false,
-						popupKey: 0
+						popupKey: 0,
+						challenges: bMap.get(entry.team_id) ?? []
 					});
 				} else {
 					existing.rank = entry.rank;
@@ -46,6 +69,7 @@
 					existing.school = entry.school;
 					existing.color = entry.color;
 					existing.total = entry.total;
+					existing.challenges = bMap.get(entry.team_id) ?? [];
 
 					if (didChange) {
 						const from = existing.displayTotal;
@@ -137,7 +161,7 @@
 				<tr>
 					<th class="col-rank">Rank</th>
 					<th class="col-team">Team</th>
-					<th class="col-school">School</th>
+					<th class="col-challenges">By Challenge</th>
 					<th class="col-score">Score</th>
 				</tr>
 			</thead>
@@ -155,7 +179,20 @@
 								<span class="team-name">{entry.name}</span>
 							</div>
 						</td>
-						<td class="col-school">{entry.school}</td>
+							<td class="col-challenges">
+								{#if entry.challenges.length > 0}
+									<div class="challenge-pills">
+										{#each entry.challenges as cs}
+											<span class="challenge-pill" class:pill-neg={cs.points < 0}>
+												<span class="pill-name">{cs.challenge_name}</span>
+												<span class="pill-pts">{cs.points > 0 ? '+' : ''}{cs.points}</span>
+											</span>
+										{/each}
+									</div>
+								{:else}
+									<span class="no-scores">—</span>
+								{/if}
+							</td>
 						<td class="col-score">
 							<div class="score-wrap">
 								<span
@@ -287,9 +324,47 @@
 		text-align: center;
 	}
 
-	.col-school {
+	.col-challenges {
+		padding-right: 0.5rem;
+	}
+
+	.challenge-pills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+
+	.challenge-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		background: #3a3640;
+		border: 1px solid #534e5e;
+		border-radius: var(--radius-sm);
+		padding: 0.2rem 0.55rem;
+		font-size: 0.8rem;
+		white-space: nowrap;
+	}
+
+	.challenge-pill.pill-neg {
+		border-color: #e21b3c55;
+	}
+
+	.pill-name {
 		color: var(--md-on-surface-variant);
-		font-size: 0.95rem;
+	}
+
+	.pill-pts {
+		font-weight: 700;
+		color: #eaddff;
+	}
+
+	.challenge-pill.pill-neg .pill-pts {
+		color: #e21b3c;
+	}
+
+	.no-scores {
+		color: var(--md-outline);
 	}
 
 	.col-score {

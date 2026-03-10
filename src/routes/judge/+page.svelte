@@ -11,9 +11,21 @@
 	// eslint-disable-next-line svelte/state-referenced-locally
 	let challenges: Challenge[] = $state([...data.challenges]);
 
+	interface ChallengeScore {
+		challenge_id: number;
+		challenge_name: string;
+		points: number;
+	}
+
 	let selectedChallenge: Challenge | null = $state(null);
 	let selectedTeam: Team | null = $state(null);
 	let step: 1 | 2 | 3 = $state(1);
+
+	// Per-team score breakdown — refreshed on entering step 3 and after each score action
+	let teamScores: ChallengeScore[] = $state([]);
+	let currentChallengeTotal = $derived(
+		teamScores.find((s) => s.challenge_id === selectedChallenge?.id)?.points ?? 0
+	);
 
 	// --- PIN authentication ---
 	const PIN_KEY = 'podium501_judge_pin';
@@ -100,6 +112,19 @@
 		{ label: '-10', points: -10, color: '#e21b3c' }
 	];
 
+	async function fetchTeamScores() {
+		if (!selectedTeam) return;
+		try {
+			const res = await fetch('/api/scores/breakdown');
+			const all: (ChallengeScore & { team_id: number })[] = await res.json();
+			teamScores = all
+				.filter((r) => r.team_id === selectedTeam!.id)
+				.map(({ challenge_id, challenge_name, points }) => ({ challenge_id, challenge_name, points }));
+		} catch {
+			// keep stale data on network error
+		}
+	}
+
 	async function addScore(points: number) {
 		if (!selectedTeam || !selectedChallenge) return;
 		const res = await fetch('/api/scores', {
@@ -115,6 +140,7 @@
 		if (res.ok) {
 			playBeep(points > 0 ? 'add' : 'subtract');
 			snackbar.show(`${points > 0 ? '+' : ''}${points} pts → ${selectedTeam.name}`);
+			await fetchTeamScores();
 		}
 	}
 
@@ -128,6 +154,7 @@
 		const res = await fetch(`/api/scores/undo?${params}`, { method: 'DELETE' });
 		if (res.ok) {
 			snackbar.show('↩ Last score undone');
+			await fetchTeamScores();
 		} else {
 			snackbar.show('Nothing to undo');
 		}
@@ -140,7 +167,9 @@
 
 	function selectTeam(t: Team) {
 		selectedTeam = t;
+		teamScores = [];
 		step = 3;
+		fetchTeamScores();
 	}
 
 	function reset() {
@@ -271,12 +300,34 @@
 					<div class="score-badge" style="background: {selectedTeam?.color};">
 						{selectedTeam?.name[0]}
 					</div>
-					<div>
+					<div class="score-context-info">
 						<div class="score-team">{selectedTeam?.name}</div>
 						<div class="score-school">{selectedTeam?.school}</div>
 						<div class="score-challenge">📋 {selectedChallenge?.name}</div>
+						<div class="challenge-total">
+							This challenge so far:
+							<strong class:total-pos={currentChallengeTotal > 0} class:total-neg={currentChallengeTotal < 0}>
+								{currentChallengeTotal > 0 ? '+' : ''}{currentChallengeTotal} pts
+							</strong>
+						</div>
 					</div>
 				</div>
+
+				{#if teamScores.length > 0}
+					<div class="breakdown-card card">
+						<p class="breakdown-title">All challenges — {selectedTeam?.name}</p>
+						<div class="breakdown-rows">
+							{#each teamScores as s}
+								<div class="breakdown-row" class:breakdown-active={s.challenge_id === selectedChallenge?.id}>
+									<span class="breakdown-name">{s.challenge_name}</span>
+									<span class="breakdown-pts" class:pts-neg={s.points < 0}>
+										{s.points > 0 ? '+' : ''}{s.points}
+									</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 
 				<div class="score-buttons">
 					{#each SCORE_BUTTONS as btn}
@@ -468,9 +519,13 @@
 
 	.score-context {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 1rem;
-		margin-bottom: 1.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.score-context-info {
+		flex: 1;
 	}
 
 	.score-badge {
@@ -490,6 +545,69 @@
 		font-size: 1.15rem;
 		font-weight: 700;
 		color: #eaddff;
+	}
+
+	.challenge-total {
+		margin-top: 0.4rem;
+		font-size: 0.875rem;
+		color: var(--md-on-surface-variant);
+	}
+
+	.challenge-total strong {
+		font-size: 1rem;
+	}
+
+	.total-pos {
+		color: #4caf50;
+	}
+
+	.total-neg {
+		color: #e21b3c;
+	}
+
+	.breakdown-card {
+		margin-bottom: 1.25rem;
+		padding: 0.875rem 1rem;
+	}
+
+	.breakdown-title {
+		font-size: 0.8rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--md-on-surface-variant);
+		margin-bottom: 0.5rem;
+	}
+
+	.breakdown-rows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.breakdown-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.3rem 0.5rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.9rem;
+	}
+
+	.breakdown-row.breakdown-active {
+		background: #3b3549;
+	}
+
+	.breakdown-name {
+		color: var(--md-on-surface);
+	}
+
+	.breakdown-pts {
+		font-weight: 700;
+		color: #eaddff;
+	}
+
+	.breakdown-pts.pts-neg {
+		color: #e21b3c;
 	}
 
 	.score-school {

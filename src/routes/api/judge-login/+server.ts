@@ -6,7 +6,9 @@ import type { RequestHandler } from './$types';
 const JUDGE_PINS: Record<string, string> = {
 	'2346': 'Amilcar',
 	'1000': 'Myron',
-	'1001': 'Coach Dulce'
+	'1001': 'Coach Dulce' ,
+    '1002': 'Namrita',
+    '1003': 'Coach Carlos',
 };
 
 export const POST: RequestHandler = async ({ request }) => {

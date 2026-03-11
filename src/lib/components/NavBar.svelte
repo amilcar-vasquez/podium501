@@ -136,9 +136,9 @@
 		.bottom-nav a::before {
 			content: '';
 			position: absolute;
-			top: 4px;
+			top: 50%;
 			left: 50%;
-			transform: translateX(-50%);
+			transform: translate(-50%, -62%);
 			width: 64px;
 			height: 32px;
 			border-radius: 50px;

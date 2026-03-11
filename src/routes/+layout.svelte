@@ -19,4 +19,10 @@
 		min-height: calc(100dvh - 56px);
 		padding: 1rem;
 	}
+
+	@media (max-width: 600px) {
+		main {
+			padding-bottom: calc(1rem + 68px);
+		}
+	}
 </style>

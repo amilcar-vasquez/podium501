@@ -135,29 +135,6 @@ label {
 	margin-bottom: 1rem;
 }
 
-.nav {
-	display: flex;
-	gap: 0.5rem;
-	padding: 0.75rem 1rem;
-	background: #2b2930;
-	border-bottom: 1px solid var(--md-surface-variant);
-	flex-wrap: wrap;
-}
-
-.nav a {
-	padding: 0.5rem 1rem;
-	border-radius: var(--radius-lg);
-	font-weight: 500;
-	color: var(--md-on-surface-variant);
-	transition: background 0.15s, color 0.15s;
-}
-
-.nav a:hover,
-.nav a.active {
-	background: var(--md-primary);
-	color: var(--md-on-primary);
-}
-
 .page-title {
 	font-size: 1.5rem;
 	font-weight: 700;

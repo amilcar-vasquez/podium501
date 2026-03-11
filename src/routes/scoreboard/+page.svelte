@@ -257,6 +257,7 @@
 	.scoreboard {
 		max-width: 900px;
 		margin: 0 auto;
+		overflow-x: hidden;
 	}
 
 	.sb-header {
@@ -488,6 +489,24 @@
 			background-color: #2b2930;
 			box-shadow: none;
 		}
+	}
+
+	/* ===== MOBILE ===== */
+	@media (max-width: 600px) {
+		.scoreboard { padding: 0; }
+		.sb-header { margin-bottom: 1rem; }
+		.sb-header h1 { font-size: 1.3rem; }
+		.col-challenges { display: none; }
+		.col-rank { width: 3rem; }
+		.col-score { width: 6rem; }
+		tbody td { padding: 0.65rem 0.5rem; }
+		thead th { padding: 0.4rem 0.5rem; font-size: 0.75rem; }
+		.team-name { font-size: 0.9rem; }
+		.team-dot { width: 0.65rem; height: 0.65rem; }
+		.score-chip { font-size: 1rem; padding: 0.25rem 0.6rem; }
+		.rank-badge { font-size: 1.1rem; }
+		.rank-icon { font-size: 1.1rem; }
+		.leaderboard-table { border-spacing: 0 0.35rem; }
 	}
 
 	/* ===== LARGE-SCREEN BREAKPOINTS ===== */

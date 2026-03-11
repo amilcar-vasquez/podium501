@@ -1,26 +1,24 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import { getDb } from '$lib/db';
 import type { RequestHandler } from './$types';
 
-// Hardcoded fallback for local development.
-// In production, set COACH_PINS_JSON env var: {"PIN":"Name", ...}
-const DEV_PINS: Record<string, string> = {
-	'2346': 'Amilcar',
-	'1000': 'Myron',
-	'1001': 'Coach Dulce',
-	'1002': 'Namrita',
-	'1003': 'Coach Carlos'
-};
+// Static admin/override PINs loaded from env var (backwards compat + admin access).
+// In production set COACH_PINS_JSON: {"PIN":"Name", ...}
+// DEV_ADMIN_PIN is a fallback for local development when no env var is set.
+const DEV_ADMIN_PIN = '2346';
+const DEV_ADMIN_NAME = 'Admin';
 
-function loadCoachPins(): Record<string, string> {
+function loadStaticPins(): Record<string, string> {
 	if (env.COACH_PINS_JSON) {
 		try {
 			return JSON.parse(env.COACH_PINS_JSON);
 		} catch {
-			console.error('Invalid COACH_PINS_JSON — falling back to dev PINs');
+			console.error('Invalid COACH_PINS_JSON');
 		}
 	}
-	return DEV_PINS;
+	// Only use dev fallback when no env override is configured
+	return { [DEV_ADMIN_PIN]: DEV_ADMIN_NAME };
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -43,10 +41,26 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ success: false, error: 'Invalid PIN' }, { status: 401 });
 	}
 
-	const coachName = loadCoachPins()[pin];
-	if (!coachName) {
+	// 1. Check static env-var pins (admin / master access — no team assignment)
+	const staticName = loadStaticPins()[pin];
+	if (staticName) {
+		return json({ success: true, coachName: staticName, teamId: null, teamName: null, role: 'admin' });
+	}
+
+	// 2. Check coaches table
+	const db = getDb();
+	const coach = db
+		.prepare(
+			`SELECT c.name, c.team_id, c.role, t.name AS team_name
+       FROM coaches c
+       LEFT JOIN teams t ON t.id = c.team_id
+       WHERE c.pin = ?`
+		)
+		.get(pin) as { name: string; team_id: number | null; role: string; team_name: string | null } | undefined;
+
+	if (!coach) {
 		return json({ success: false, error: 'Invalid PIN' }, { status: 401 });
 	}
 
-	return json({ success: true, coachName });
+	return json({ success: true, coachName: coach.name, teamId: coach.team_id, teamName: coach.team_name, role: coach.role });
 };

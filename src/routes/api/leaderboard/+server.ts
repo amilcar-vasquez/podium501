@@ -9,7 +9,7 @@ export const GET: RequestHandler = () => {
 			`SELECT
         t.id   AS team_id,
         t.name,
-        t.school,
+        t.table_number,
         t.color,
         COALESCE(SUM(se.points), 0) AS total
       FROM teams t
@@ -20,7 +20,7 @@ export const GET: RequestHandler = () => {
 		.all() as Array<{
 		team_id: number;
 		name: string;
-		school: string;
+		table_number: string;
 		color: string;
 		total: number;
 	}>;

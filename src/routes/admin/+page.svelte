@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import type { Team, Challenge } from '$lib/types';
+	import type { Team, Challenge, Coach } from '$lib/types';
 	import Snackbar from '$lib/components/Snackbar.svelte';
 	import { onMount } from 'svelte';
 
@@ -10,6 +10,8 @@
 	let teams: Team[] = $state([...data.teams]);
 	// eslint-disable-next-line svelte/state-referenced-locally
 	let challenges: Challenge[] = $state([...data.challenges]);
+	// eslint-disable-next-line svelte/state-referenced-locally
+	let coaches: Coach[] = $state([...data.coaches]);
 
 	// Snackbar
 	let snackbar: Snackbar;
@@ -17,6 +19,7 @@
 	// --- PIN authentication (same keys as coach page) ---
 	const PIN_KEY = 'podium501_coach_pin';
 	const NAME_KEY = 'podium501_coach_name';
+	const ROLE_KEY = 'podium501_coach_role';
 
 	let mounted = $state(false);
 	let pinVerified = $state(false);
@@ -29,7 +32,8 @@
 		mounted = true;
 		const storedPin = localStorage.getItem(PIN_KEY);
 		const storedName = localStorage.getItem(NAME_KEY);
-		if (storedPin && storedName) {
+		const storedRole = localStorage.getItem(ROLE_KEY);
+		if (storedPin && storedName && storedRole === 'admin') {
 			coachName = storedName;
 			pinVerified = true;
 		}
@@ -48,8 +52,14 @@
 			});
 			const result = await res.json();
 			if (result.success) {
+				if (result.role !== 'admin') {
+					pinError = 'Admin access only.';
+					pinInput = '';
+					return;
+				}
 				localStorage.setItem(PIN_KEY, pin);
 				localStorage.setItem(NAME_KEY, result.coachName);
+				localStorage.setItem(ROLE_KEY, 'admin');
 				coachName = result.coachName;
 				pinVerified = true;
 			} else {
@@ -65,7 +75,7 @@
 
 	// Team form
 	let newTeamName = $state('');
-	let newTeamSchool = $state('');
+	let newTableNumber = $state('');
 	let newTeamColor = $state('#6750A4');
 	let teamLoading = $state(false);
 
@@ -76,18 +86,18 @@
 
 	// ---- Teams ----
 	async function addTeam() {
-		if (!newTeamName.trim() || !newTeamSchool.trim()) return;
+		if (!newTeamName.trim()) return;
 		teamLoading = true;
 		const res = await fetch('/api/teams', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: newTeamName, school: newTeamSchool, color: newTeamColor })
+			body: JSON.stringify({ name: newTeamName, table_number: newTableNumber, color: newTeamColor })
 		});
 		if (res.ok) {
 			const t = await res.json();
 			teams = [...teams, t];
 			newTeamName = '';
-			newTeamSchool = '';
+			newTableNumber = '';
 			// newTeamColor is auto-updated by the $effect above
 			snackbar.show(`Team "${t.name}" added`);
 		} else {
@@ -133,7 +143,43 @@
 		snackbar.show(`Challenge "${name}" deleted`);
 	}
 
-	// ---- Reset ----
+	// ---- Coaches ----
+	let newCoachName = $state('');
+	let newCoachRole = $state<'coach' | 'admin'>('coach');
+	let newCoachTeamId = $state<number | ''>('');
+	let coachLoading = $state(false);
+	let revealedPin = $state<{ name: string; pin: string } | null>(null);
+
+	async function addCoach() {
+		if (!newCoachName.trim()) return;
+		coachLoading = true;
+		const res = await fetch('/api/coaches', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: newCoachName.trim(), team_id: newCoachTeamId || null, role: newCoachRole })
+		});
+		if (res.ok) {
+			const c = await res.json();
+			coaches = [...coaches, c];
+			revealedPin = { name: c.name, pin: c.pin };
+			newCoachName = '';
+			newCoachTeamId = '';
+			newCoachRole = 'coach';
+		} else {
+			const e = await res.json();
+			snackbar.show(e.error ?? 'Error adding coach');
+		}
+		coachLoading = false;
+	}
+
+	async function deleteCoach(id: number, name: string) {
+		if (!confirm(`Remove coach "${name}"?`)) return;
+		const res = await fetch(`/api/coaches/${id}`, { method: 'DELETE' });
+		if (res.ok) {
+			coaches = coaches.filter((c) => c.id !== id);
+			snackbar.show(`Coach "${name}" removed`);
+		}
+	}
 	async function resetScores() {
 		if (!confirm('Reset ALL scores? This cannot be undone.')) return;
 		await fetch('/api/scores/reset', { method: 'POST' });
@@ -221,8 +267,8 @@
 					<input id="team-name" bind:value={newTeamName} placeholder="e.g. Team Tapir" required />
 				</div>
 				<div class="field">
-					<label for="team-school">School *</label>
-					<input id="team-school" bind:value={newTeamSchool} placeholder="e.g. Sacred Heart College" required />
+					<label for="team-table">Table number</label>
+					<input id="team-table" bind:value={newTableNumber} placeholder="e.g. 5" />
 				</div>
 				<div class="field">
 					<label for="color-native">Color</label>
@@ -254,7 +300,7 @@
 						<span class="dot" style="background:{t.color};"></span>
 						<div class="item-info">
 							<strong>{t.name}</strong>
-							<small>{t.school}</small>
+							{#if t.table_number}<small>Table {t.table_number}</small>{/if}
 						</div>
 						<button class="btn btn-danger btn-sm" onclick={() => deleteTeam(t.id, t.name)}>
 							Delete
@@ -298,6 +344,67 @@
 					</li>
 				{:else}
 					<li class="empty-item">No challenges yet.</li>
+				{/each}
+			</ul>
+		</section>
+
+		<!-- Coaches -->
+		<section class="card coaches-card">
+			<h2><span class="material-icons" style="vertical-align:middle;font-size:1.2rem">badge</span> Coaches</h2>
+
+			{#if revealedPin}
+				<div class="pin-reveal">
+					<span class="material-icons pin-reveal-icon">key</span>
+					<div class="pin-reveal-text">
+						<strong>{revealedPin.name}</strong> added —
+						PIN: <span class="pin-code">{revealedPin.pin}</span>
+						<br><small>Share this with the coach. It won't be shown again.</small>
+					</div>
+					<button class="btn btn-sm btn-secondary" onclick={() => revealedPin = null}>✕ Dismiss</button>
+				</div>
+			{/if}
+
+			<form class="form" onsubmit={(e) => { e.preventDefault(); addCoach(); }}>
+				<div class="field">
+					<label for="coach-name">Name *</label>
+					<input id="coach-name" bind:value={newCoachName} placeholder="e.g. Coach Smith" required />
+				</div>
+				<div class="field">
+					<label for="coach-role">Role</label>
+					<select id="coach-role" bind:value={newCoachRole} class="select-input">
+						<option value="coach">Coach</option>
+						<option value="admin">Admin</option>
+					</select>
+				</div>
+				<div class="field">
+					<label for="coach-team">Assign to team</label>
+					<select id="coach-team" bind:value={newCoachTeamId} class="select-input">
+						<option value="">— Unassigned —</option>
+						{#each teams.filter(t => !coaches.some(c => c.team_id === t.id)) as t}
+							<option value={t.id}>{t.name}</option>
+						{/each}
+					</select>
+				</div>
+				<button class="btn btn-primary" type="submit" disabled={coachLoading}>
+					{coachLoading ? 'Adding…' : '+ Add Coach'}
+				</button>
+			</form>
+
+			<ul class="item-list">
+				{#each coaches as c (c.id)}
+					<li>
+						<span class="material-icons" style="color:#cac4d0;font-size:1.1rem;flex-shrink:0">person</span>
+						<div class="item-info">
+							<strong>{c.name}</strong>
+							<small>
+								{c.role === 'admin' ? '⭐ Admin' : (c.team_name ? `Team: ${c.team_name}` : 'Unassigned')}
+								· PIN: <code class="pin-inline">{c.pin}</code>
+							</small>
+						</div>
+						<button class="btn btn-danger btn-sm" onclick={() => deleteCoach(c.id, c.name)}>Remove</button>
+					</li>
+				{:else}
+					<li class="empty-item">No coaches yet.</li>
 				{/each}
 			</ul>
 		</section>
@@ -372,12 +479,6 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 1.5rem;
-	}
-
-	@media (max-width: 700px) {
-		.admin-grid {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	h2 {
@@ -469,6 +570,57 @@
 		color: var(--md-on-surface-variant);
 		font-size: 0.9rem;
 		justify-content: center;
+	}
+
+	.coaches-card {
+		grid-column: 1 / -1;
+	}
+
+	.pin-reveal {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		background: #1a3a1a;
+		border: 1px solid #26890c55;
+		border-radius: var(--radius-sm);
+		padding: 0.75rem 1rem;
+		margin-bottom: 1.25rem;
+		color: #a5d6a7;
+	}
+
+	.pin-reveal-icon {
+		color: #66bb6a;
+		flex-shrink: 0;
+	}
+
+	.pin-reveal-text {
+		flex: 1;
+		font-size: 0.9rem;
+		line-height: 1.5;
+	}
+
+	.pin-code {
+		font-family: monospace;
+		font-size: 1.15rem;
+		font-weight: 700;
+		color: #a5d6a7;
+		letter-spacing: 0.15em;
+	}
+
+	.pin-inline {
+		font-family: monospace;
+		color: #b0bec5;
+		font-size: 0.85rem;
+	}
+
+	.select-input {
+		width: 100%;
+		padding: 0.6rem 0.75rem;
+		border-radius: var(--radius-sm);
+		border: 1px solid #49454f;
+		background: #2b2930;
+		color: #e6e1e5;
+		font-size: 0.95rem;
 	}
 
 	.danger-zone {

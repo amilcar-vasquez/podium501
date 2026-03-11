@@ -19,11 +19,23 @@ export function getDb(): Database.Database {
 }
 
 function migrate(db: Database.Database) {
+	// Rename legacy 'school' column to 'table_number' if it still exists
+	const cols = db.prepare('PRAGMA table_info(teams)').all() as { name: string }[];
+	if (cols.some((c) => c.name === 'school') && !cols.some((c) => c.name === 'table_number')) {
+		db.exec('ALTER TABLE teams RENAME COLUMN school TO table_number');
+	}
+
+	// Add role column to coaches if it doesn't exist yet (migration for existing DBs)
+	const coachCols = db.prepare('PRAGMA table_info(coaches)').all() as { name: string }[];
+	if (coachCols.length > 0 && !coachCols.some((c) => c.name === 'role')) {
+		db.exec("ALTER TABLE coaches ADD COLUMN role TEXT NOT NULL DEFAULT 'coach'");
+	}
+
 	db.exec(`
     CREATE TABLE IF NOT EXISTS teams (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
-      school TEXT NOT NULL,
+      table_number TEXT NOT NULL DEFAULT '',
       color TEXT NOT NULL DEFAULT '#6750A4'
     );
 
@@ -40,6 +52,14 @@ function migrate(db: Database.Database) {
       points INTEGER NOT NULL,
       judge TEXT NOT NULL DEFAULT 'Coach',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS coaches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      pin TEXT NOT NULL UNIQUE,
+      team_id INTEGER UNIQUE REFERENCES teams(id) ON DELETE SET NULL,
+      role TEXT NOT NULL DEFAULT 'coach'
     );
   `);
 }

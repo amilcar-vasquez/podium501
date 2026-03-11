@@ -30,10 +30,14 @@
 	// --- PIN authentication ---
 	const PIN_KEY = 'podium501_coach_pin';
 	const NAME_KEY = 'podium501_coach_name';
+	const TEAM_KEY = 'podium501_coach_team_id';
+	const ROLE_KEY = 'podium501_coach_role';
 
 	let mounted = $state(false);
 	let pinVerified = $state(false);
 	let coachName = $state('');
+	let assignedTeamId = $state<number | null>(null);
+	let assignedTeam = $derived(assignedTeamId ? (teams.find((t) => t.id === assignedTeamId) ?? null) : null);
 	let pinInput = $state('');
 	let pinError = $state('');
 	let isVerifying = $state(false);
@@ -44,8 +48,10 @@
 		mounted = true;
 		const storedPin = localStorage.getItem(PIN_KEY);
 		const storedName = localStorage.getItem(NAME_KEY);
+		const storedTeamId = localStorage.getItem(TEAM_KEY);
 		if (storedPin && storedName) {
 			coachName = storedName;
+			if (storedTeamId) assignedTeamId = Number(storedTeamId);
 			pinVerified = true;
 		}
 	});
@@ -65,6 +71,14 @@
 			if (result.success) {
 				localStorage.setItem(PIN_KEY, pin);
 				localStorage.setItem(NAME_KEY, result.coachName);
+				localStorage.setItem(ROLE_KEY, result.role ?? 'coach');
+				if (result.teamId) {
+					localStorage.setItem(TEAM_KEY, String(result.teamId));
+					assignedTeamId = result.teamId;
+				} else {
+					localStorage.removeItem(TEAM_KEY);
+					assignedTeamId = null;
+				}
 				coachName = result.coachName;
 				pinVerified = true;
 			} else {
@@ -81,7 +95,10 @@
 	function logout() {
 		localStorage.removeItem(PIN_KEY);
 		localStorage.removeItem(NAME_KEY);
+		localStorage.removeItem(TEAM_KEY);
+		localStorage.removeItem(ROLE_KEY);
 		pinVerified = false;
+		assignedTeamId = null;
 		pinInput = '';
 		coachName = '';
 		reset();
@@ -162,7 +179,11 @@
 
 	function selectChallenge(c: Challenge) {
 		selectedChallenge = c;
-		step = 2;
+		if (assignedTeam) {
+			selectTeam(assignedTeam);
+		} else {
+			step = 2;
+		}
 	}
 
 	function selectTeam(t: Team) {
@@ -233,18 +254,20 @@
 		<!-- Breadcrumb -->
 		<div class="breadcrumb">
 			<button onclick={reset} class:active={step === 1}>1. Challenge</button>
+			{#if !assignedTeam}
+				<span>›</span>
+				<button
+					onclick={() => {
+						if (step === 3) step = 2;
+					}}
+					class:active={step === 2}
+					disabled={step < 2}
+				>
+					2. Team
+				</button>
+			{/if}
 			<span>›</span>
-			<button
-				onclick={() => {
-					if (step === 3) step = 2;
-				}}
-				class:active={step === 2}
-				disabled={step < 2}
-			>
-				2. Team
-			</button>
-			<span>›</span>
-			<button class:active={step === 3} disabled={step < 3}>3. Score</button>
+			<button class:active={step === 3} disabled={step < 3}>{assignedTeam ? '2.' : '3.'} Score</button>
 		</div>
 
 		<!-- Step 1: Select Challenge -->
@@ -285,7 +308,7 @@
 								onclick={() => selectTeam(t)}
 							>
 								<span class="pick-title">{t.name}</span>
-								<span class="pick-sub">{t.school}</span>
+								{#if t.table_number}<span class="pick-sub">Table {t.table_number}</span>{/if}
 							</button>
 						{/each}
 					</div>
@@ -304,7 +327,7 @@
 							</div>
 							<div class="score-context-info">
 								<div class="score-team">{selectedTeam?.name}</div>
-								<div class="score-school">{selectedTeam?.school}</div>
+								{#if selectedTeam?.table_number}<div class="score-school">Table {selectedTeam.table_number}</div>{/if}
 								<div class="score-challenge"><span class="material-icons" style="vertical-align:middle;font-size:1rem">assignment</span> {selectedChallenge?.name}</div>
 								<div class="challenge-total">
 									This challenge so far:

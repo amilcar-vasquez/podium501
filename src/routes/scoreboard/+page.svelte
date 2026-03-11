@@ -25,14 +25,7 @@
 	let pollInterval: ReturnType<typeof setInterval>;
 	let milestoneBanner: string | null = $state(null);
 
-	// Wide-screen two-column layout
-	let isWide = $state(false);
-	let mq: MediaQueryList;
-	let mqHandler: (e: MediaQueryListEvent) => void;
-	let colSplit = $derived(Math.ceil(displayEntries.length / 2));
-	let colA = $derived(displayEntries.slice(0, colSplit));
-	let colB = $derived(displayEntries.slice(colSplit));
-	let useTwoCols = $derived(isWide && displayEntries.length >= 4);
+
 
 	const MILESTONES = [100, 200, 300, 500];
 	const RANK_COLORS = ['#d89e00', '#938f99', '#cd7f32'];
@@ -75,7 +68,7 @@
 				} else {
 					existing.rank = entry.rank;
 					existing.name = entry.name;
-					existing.school = entry.school;
+					existing.table_number = entry.table_number;
 					existing.color = entry.color;
 					existing.total = entry.total;
 					existing.challenges = bMap.get(entry.team_id) ?? [];
@@ -139,15 +132,11 @@
 	onMount(() => {
 		fetchLeaderboard();
 		pollInterval = setInterval(fetchLeaderboard, 2000);
-		mq = window.matchMedia('(min-width: 1920px)');
-		isWide = mq.matches;
-		mqHandler = (e) => { isWide = e.matches; };
-		mq.addEventListener('change', mqHandler);
+
 	});
 
 	onDestroy(() => {
 		clearInterval(pollInterval);
-		mq?.removeEventListener('change', mqHandler);
 	});
 </script>
 
@@ -233,17 +222,6 @@
 	{#if displayEntries.length === 0}
 		<div class="empty-state">
 			<p>No teams yet. <a href="/admin">Add teams in Admin</a> and start scoring!</p>
-		</div>
-	{:else if useTwoCols}
-		<div class="sb-two-col">
-			<table class="leaderboard-table">
-				{@render tableHead()}
-				<tbody>{@render tableRows(colA)}</tbody>
-			</table>
-			<table class="leaderboard-table">
-				{@render tableHead()}
-				<tbody>{@render tableRows(colB)}</tbody>
-			</table>
 		</div>
 	{:else}
 		<table class="leaderboard-table">
@@ -511,14 +489,6 @@
 
 	/* ===== LARGE-SCREEN BREAKPOINTS ===== */
 
-	/* Two-column grid (activated via JS matchMedia at ≥ 1920 px) */
-	.sb-two-col {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 3rem;
-		align-items: start;
-	}
-
 	/* 1400 px – large desktop / small TV */
 	@media (min-width: 1400px) {
 		.scoreboard { max-width: 1400px; }
@@ -569,7 +539,6 @@
 		.team-dot { width: 1.5rem; height: 1.5rem; }
 		.challenge-pill { font-size: 1.1rem; padding: 0.4rem 1rem; }
 		.milestone-banner { font-size: 3.5rem; padding: 1.5rem 3rem; }
-		.sb-two-col { gap: 5rem; }
 	}
 
 	/* 3840 px – 4K / LED video wall */
@@ -589,7 +558,6 @@
 		.team-dot { width: 2rem; height: 2rem; }
 		.challenge-pill { font-size: 1.5rem; padding: 0.5rem 1.25rem; }
 		.milestone-banner { font-size: 5.5rem; padding: 2.5rem 5rem; border-radius: 2rem; }
-		.sb-two-col { gap: 8rem; }
 	}
 </style>
 

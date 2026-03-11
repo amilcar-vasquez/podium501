@@ -9,12 +9,12 @@ export const GET: RequestHandler = () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-	const { name, school, color } = await request.json();
-	if (!name?.trim() || !school?.trim()) {
-		return json({ error: 'name and school are required' }, { status: 400 });
+	const { name, table_number, color } = await request.json();
+	if (!name?.trim()) {
+		return json({ error: 'name is required' }, { status: 400 });
 	}
 	const db = getDb();
-	const stmt = db.prepare('INSERT INTO teams (name, school, color) VALUES (?, ?, ?)');
-	const result = stmt.run(name.trim(), school.trim(), color || '#6750A4');
-	return json({ id: result.lastInsertRowid, name, school, color }, { status: 201 });
+	const stmt = db.prepare('INSERT INTO teams (name, table_number, color) VALUES (?, ?, ?)');
+	const result = stmt.run(name.trim(), (table_number ?? '').trim(), color || '#6750A4');
+	return json({ id: result.lastInsertRowid, name, table_number: table_number ?? '', color }, { status: 201 });
 };

@@ -12,9 +12,9 @@ node_modules
 .DS_Store
 Thumbs.db
 
-# Database
-data/
-*.db
+# Database — track the data folder but ignore SQLite temp/wal files
+/data/*.db-shm
+/data/*.db-wal
 *.db-shm
 *.db-wal
 

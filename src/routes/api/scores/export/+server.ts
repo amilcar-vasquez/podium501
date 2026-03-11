@@ -7,7 +7,7 @@ export const GET: RequestHandler = () => {
 		.prepare(
 			`SELECT
         t.name   AS team,
-        t.school,
+        t.table_number,
         c.name   AS challenge,
         se.points,
         se.judge,
@@ -19,18 +19,18 @@ export const GET: RequestHandler = () => {
 		)
 		.all() as Array<{
 		team: string;
-		school: string;
+		table_number: string;
 		challenge: string;
 		points: number;
 		judge: string;
 		created_at: string;
 	}>;
 
-	const header = 'Team,School,Challenge,Points,Coach,Created At\n';
+	const header = 'Team,Table,Challenge,Points,Coach,Created At\n';
 	const body = rows
 		.map(
 			(r) =>
-				`"${r.team}","${r.school}","${r.challenge}",${r.points},"${r.judge}","${r.created_at}"`
+				`"${r.team}","${r.table_number}","${r.challenge}",${r.points},"${r.judge}","${r.created_at}"`
 		)
 		.join('\n');
 

@@ -2,6 +2,7 @@
 	import type { PageData } from './$types';
 	import type { Team, Challenge } from '$lib/types';
 	import Snackbar from '$lib/components/Snackbar.svelte';
+	import { onMount } from 'svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -12,6 +13,55 @@
 
 	// Snackbar
 	let snackbar: Snackbar;
+
+	// --- PIN authentication (same keys as coach page) ---
+	const PIN_KEY = 'podium501_coach_pin';
+	const NAME_KEY = 'podium501_coach_name';
+
+	let mounted = $state(false);
+	let pinVerified = $state(false);
+	let coachName = $state('');
+	let pinInput = $state('');
+	let pinError = $state('');
+	let isVerifying = $state(false);
+
+	onMount(() => {
+		mounted = true;
+		const storedPin = localStorage.getItem(PIN_KEY);
+		const storedName = localStorage.getItem(NAME_KEY);
+		if (storedPin && storedName) {
+			coachName = storedName;
+			pinVerified = true;
+		}
+	});
+
+	async function verifyPin() {
+		const pin = pinInput.trim();
+		if (!pin) return;
+		isVerifying = true;
+		pinError = '';
+		try {
+			const res = await fetch('/api/coach-login', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ pin })
+			});
+			const result = await res.json();
+			if (result.success) {
+				localStorage.setItem(PIN_KEY, pin);
+				localStorage.setItem(NAME_KEY, result.coachName);
+				coachName = result.coachName;
+				pinVerified = true;
+			} else {
+				pinError = 'Invalid PIN. Try again.';
+				pinInput = '';
+			}
+		} catch {
+			pinError = 'Connection error. Try again.';
+		} finally {
+			isVerifying = false;
+		}
+	}
 
 	// Team form
 	let newTeamName = $state('');
@@ -38,11 +88,11 @@
 			teams = [...teams, t];
 			newTeamName = '';
 			newTeamSchool = '';
-			newTeamColor = '#6750A4';
-			snackbar.show(`✅ Team "${t.name}" added`);
+			// newTeamColor is auto-updated by the $effect above
+			snackbar.show(`Team "${t.name}" added`);
 		} else {
 			const e = await res.json();
-			snackbar.show(`⚠️ ${e.error}`);
+			snackbar.show(e.error);
 		}
 		teamLoading = false;
 	}
@@ -51,7 +101,7 @@
 		if (!confirm(`Delete team "${name}"? This will remove all their scores.`)) return;
 		await fetch(`/api/teams/${id}`, { method: 'DELETE' });
 		teams = teams.filter((t) => t.id !== id);
-		snackbar.show(`🗑 Team "${name}" deleted`);
+		snackbar.show(`Team "${name}" deleted`);
 	}
 
 	// ---- Challenges ----
@@ -68,10 +118,10 @@
 			challenges = [...challenges, c];
 			newChallengeName = '';
 			newChallengeDesc = '';
-			snackbar.show(`✅ Challenge "${c.name}" added`);
+			snackbar.show(`Challenge "${c.name}" added`);
 		} else {
 			const e = await res.json();
-			snackbar.show(`⚠️ ${e.error}`);
+			snackbar.show(e.error);
 		}
 		challengeLoading = false;
 	}
@@ -80,14 +130,14 @@
 		if (!confirm(`Delete challenge "${name}"? This will remove all associated scores.`)) return;
 		await fetch(`/api/challenges/${id}`, { method: 'DELETE' });
 		challenges = challenges.filter((c) => c.id !== id);
-		snackbar.show(`🗑 Challenge "${name}" deleted`);
+		snackbar.show(`Challenge "${name}" deleted`);
 	}
 
 	// ---- Reset ----
 	async function resetScores() {
 		if (!confirm('Reset ALL scores? This cannot be undone.')) return;
 		await fetch('/api/scores/reset', { method: 'POST' });
-		snackbar.show('🔄 All scores reset');
+		snackbar.show('All scores reset');
 	}
 
 	// ---- Export ----
@@ -96,45 +146,100 @@
 	}
 
 	const PRESET_COLORS = [
-		'#e21b3c', '#1368ce', '#d89e00', '#26890c',
-		'#864cbf', '#e15f2c', '#6750a4', '#00897b'
+		// reds / oranges
+		'#e53935', '#f4511e', '#fb8c00', '#f9a825',
+		// greens
+		'#c0ca33', '#43a047', '#26890c', '#00897b',
+		// cyans / blues
+		'#00acc1', '#039be5', '#1e88e5', '#3949ab',
+		// purples / pinks
+		'#5e35b1', '#8e24aa', '#d81b60', '#e91e63',
+		// bright accent row 1
+		'#00bfa5', '#00b0ff', '#64dd17', '#ffab40',
+		// bright accent row 2
+		'#ff6d00', '#ff4081', '#7c4dff', '#1de9b6',
+		// pastel / extra
+		'#ffd740', '#ff6e40', '#40c4ff', '#69f0ae',
+		// varied
+		'#ea80fc', '#f06292', '#4fc3f7', '#546e7a'
 	];
+
+	// Colors already assigned to existing teams (normalised to lowercase)
+	let usedColors = $derived(new Set(teams.map((t) => t.color.toLowerCase())));
+
+	// Available preset colors — excludes those already in use
+	let availableColors = $derived(PRESET_COLORS.filter((c) => !usedColors.has(c.toLowerCase())));
+
+	// Keep newTeamColor pointing at a valid available preset whenever the list changes
+	$effect(() => {
+		if (availableColors.length > 0 && !availableColors.includes(newTeamColor)) {
+			newTeamColor = availableColors[0];
+		}
+	});
 </script>
 
 <svelte:head>
 	<title>Admin — Podium501</title>
 </svelte:head>
 
+{#if !mounted}
+	<!-- avoid flash before localStorage check -->
+{:else if !pinVerified}
+	<div class="pin-gate">
+		<div class="pin-card">
+			<h2><span class="material-icons" style="vertical-align:middle;font-size:1.2rem">lock</span> Admin Access</h2>
+			<p>Enter your coach PIN to continue.</p>
+			<form onsubmit={(e) => { e.preventDefault(); verifyPin(); }}>
+				<input
+					type="password"
+					inputmode="numeric"
+					pattern="\d*"
+					maxlength="8"
+					placeholder="PIN"
+					bind:value={pinInput}
+				/>
+				{#if pinError}<p class="pin-error">{pinError}</p>{/if}
+				<button class="btn btn-primary" type="submit" disabled={isVerifying} style="margin-top:1rem;">
+					{isVerifying ? 'Checking…' : 'Unlock'}
+				</button>
+			</form>
+		</div>
+	</div>
+{:else}
+
 <div class="admin-page">
-	<h1 class="page-title">⚙️ Admin</h1>
+	<h1 class="page-title"><span class="material-icons" style="vertical-align:middle;font-size:1.5rem">settings</span> Admin</h1>
 
 	<div class="admin-grid">
 		<!-- Teams -->
 		<section class="card">
-			<h2>👥 Teams</h2>
+			<h2><span class="material-icons" style="vertical-align:middle;font-size:1.2rem">groups</span> Teams</h2>
 
 			<form class="form" onsubmit={(e) => { e.preventDefault(); addTeam(); }}>
 				<div class="field">
 					<label for="team-name">Team name *</label>
-					<input id="team-name" bind:value={newTeamName} placeholder="e.g. Team Rocket" required />
+					<input id="team-name" bind:value={newTeamName} placeholder="e.g. Team Tapir" required />
 				</div>
 				<div class="field">
 					<label for="team-school">School *</label>
-					<input id="team-school" bind:value={newTeamSchool} placeholder="e.g. Lincoln High" required />
+					<input id="team-school" bind:value={newTeamSchool} placeholder="e.g. Sacred Heart College" required />
 				</div>
 				<div class="field">
 					<label for="color-native">Color</label>
 					<div class="color-row">
-						{#each PRESET_COLORS as c}
-							<button
-								type="button"
-								class="color-dot"
-								class:selected={newTeamColor === c}
-								style="background:{c};"
-								aria-label="Select color {c}"
-								onclick={() => (newTeamColor = c)}
-							></button>
-						{/each}
+					{#each availableColors as c}
+						<button
+							type="button"
+							class="color-dot"
+							class:selected={newTeamColor === c}
+							style="background:{c};"
+							aria-label="Select color {c}"
+							onclick={() => (newTeamColor = c)}
+						></button>
+					{/each}
+					{#if availableColors.length === 0}
+						<span class="no-colors">All preset colors in use</span>
+					{/if}
 						<input id="color-native" type="color" bind:value={newTeamColor} class="color-native" />
 					</div>
 				</div>
@@ -163,12 +268,12 @@
 
 		<!-- Challenges -->
 		<section class="card">
-			<h2>📋 Challenges</h2>
+			<h2><span class="material-icons" style="vertical-align:middle;font-size:1.2rem">assignment</span> Challenges</h2>
 
 			<form class="form" onsubmit={(e) => { e.preventDefault(); addChallenge(); }}>
 				<div class="field">
 					<label for="challenge-name">Challenge name *</label>
-					<input id="challenge-name" bind:value={newChallengeName} placeholder="e.g. Bridge Building" required />
+					<input id="challenge-name" bind:value={newChallengeName} placeholder="e.g. CryptoCraze" required />
 				</div>
 				<div class="field">
 					<label for="challenge-desc">Description</label>
@@ -199,11 +304,11 @@
 
 		<!-- Danger Zone -->
 		<section class="card danger-zone">
-			<h2>⚠️ Danger Zone</h2>
+			<h2><span class="material-icons" style="vertical-align:middle;font-size:1.2rem;color:#f2b8b8">warning</span> Danger Zone</h2>
 			<p>These actions affect all scores.</p>
 			<div class="danger-btns">
-				<button class="btn btn-danger" onclick={resetScores}>🔄 Reset All Scores</button>
-				<button class="btn btn-secondary" onclick={exportCsv}>📥 Export CSV</button>
+				<button class="btn btn-danger" onclick={resetScores}><span class="material-icons" style="vertical-align:middle;font-size:1rem">restart_alt</span> Reset All Scores</button>
+				<button class="btn btn-secondary" onclick={exportCsv}><span class="material-icons" style="vertical-align:middle;font-size:1rem">download</span> Export CSV</button>
 			</div>
 		</section>
 	</div>
@@ -211,7 +316,53 @@
 
 <Snackbar bind:this={snackbar} />
 
+{/if}
+
 <style>
+	.pin-gate {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		min-height: 60vh;
+	}
+
+	.pin-card {
+		background: #1c1b1f;
+		border: 1px solid #49454f;
+		border-radius: 16px;
+		padding: 2rem;
+		width: 100%;
+		max-width: 320px;
+		text-align: center;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.pin-card h2 {
+		margin: 0;
+		color: #eaddff;
+	}
+
+	.pin-card input {
+		width: 100%;
+		padding: 0.75rem;
+		border-radius: 8px;
+		border: 1px solid #49454f;
+		background: #2b2930;
+		color: #e6e1e5;
+		font-size: 1.25rem;
+		text-align: center;
+		letter-spacing: 0.25em;
+		box-sizing: border-box;
+	}
+
+	.pin-error {
+		color: #f2b8b8;
+		margin: 0;
+		font-size: 0.875rem;
+	}
+
 	.admin-page {
 		max-width: 1000px;
 		margin: 0 auto;
@@ -243,13 +394,14 @@
 	.color-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.35rem;
 		flex-wrap: wrap;
+		max-width: 320px;
 	}
 
 	.color-dot {
-		width: 1.75rem;
-		height: 1.75rem;
+		width: 1.4rem;
+		height: 1.4rem;
 		border-radius: 50%;
 		border: 3px solid transparent;
 		cursor: pointer;
@@ -269,6 +421,12 @@
 		cursor: pointer;
 		padding: 0;
 		background: none;
+	}
+
+	.no-colors {
+		font-size: 0.8rem;
+		color: #938f99;
+		font-style: italic;
 	}
 
 	.item-list {
@@ -328,5 +486,78 @@
 		display: flex;
 		gap: 1rem;
 		flex-wrap: wrap;
+	}
+
+	/* ===== RESPONSIVE BREAKPOINTS ===== */
+
+	/* 1400 px – large desktop */
+	@media (min-width: 1400px) {
+		.admin-page { max-width: 1300px; }
+		h2 { font-size: 1.3rem; }
+		.item-info { font-size: 1rem; }
+		.item-info small { font-size: 0.875rem; }
+		.color-dot { width: 1.6rem; height: 1.6rem; }
+		.color-native { width: 2.2rem; height: 2.2rem; }
+		.color-row { max-width: 420px; gap: 0.45rem; }
+	}
+
+	/* 1920 px – Full HD */
+	@media (min-width: 1920px) {
+		.admin-page { max-width: 100%; padding: 0 3rem; }
+		.admin-grid { grid-template-columns: 1fr 1fr; gap: 2.5rem; }
+		h2 { font-size: 1.6rem; margin-bottom: 1.5rem; }
+		.page-title { font-size: 2rem; }
+		input { font-size: 1.15rem; padding: 0.9rem 1.1rem; }
+		label { font-size: 1rem; }
+		.btn { font-size: 1.1rem; padding: 0.875rem 1.75rem; }
+		.btn-sm { font-size: 0.95rem; }
+		.item-list li { padding: 0.875rem 1rem; }
+		.item-info { font-size: 1.1rem; }
+		.item-info small { font-size: 0.9rem; }
+		.dot { width: 1rem; height: 1rem; }
+		.color-dot { width: 1.85rem; height: 1.85rem; }
+		.color-native { width: 2.5rem; height: 2.5rem; }
+		.color-row { max-width: 520px; gap: 0.5rem; }
+		.pin-card { max-width: 420px; padding: 3rem; }
+		.pin-card input { font-size: 1.75rem; }
+	}
+
+	/* 2560 px – QHD */
+	@media (min-width: 2560px) {
+		.admin-page { padding: 0 5rem; }
+		.admin-grid { gap: 3.5rem; }
+		h2 { font-size: 2rem; margin-bottom: 2rem; }
+		.page-title { font-size: 2.75rem; }
+		input { font-size: 1.5rem; padding: 1.1rem 1.4rem; }
+		label { font-size: 1.3rem; }
+		.btn { font-size: 1.4rem; padding: 1.1rem 2.25rem; }
+		.item-list li { padding: 1.25rem 1.5rem; }
+		.item-info { font-size: 1.4rem; }
+		.item-info small { font-size: 1.1rem; }
+		.dot { width: 1.3rem; height: 1.3rem; }
+		.color-dot { width: 2.25rem; height: 2.25rem; }
+		.color-native { width: 3rem; height: 3rem; }
+		.color-row { max-width: 700px; gap: 0.65rem; }
+		.no-colors { font-size: 1.1rem; }
+	}
+
+	/* 3840 px – 4K */
+	@media (min-width: 3840px) {
+		.admin-page { padding: 0 8rem; }
+		.admin-grid { gap: 5rem; }
+		h2 { font-size: 3rem; margin-bottom: 2.5rem; }
+		.page-title { font-size: 4rem; }
+		input { font-size: 2.25rem; padding: 1.5rem 2rem; }
+		label { font-size: 1.9rem; }
+		.btn { font-size: 2rem; padding: 1.5rem 3rem; }
+		.item-list { gap: 0.875rem; }
+		.item-list li { padding: 1.75rem 2rem; }
+		.item-info { font-size: 2rem; }
+		.item-info small { font-size: 1.6rem; }
+		.dot { width: 1.75rem; height: 1.75rem; }
+		.color-dot { width: 3.25rem; height: 3.25rem; }
+		.color-native { width: 4rem; height: 4rem; }
+		.color-row { max-width: 1000px; gap: 0.85rem; }
+		.no-colors { font-size: 1.6rem; }
 	}
 </style>

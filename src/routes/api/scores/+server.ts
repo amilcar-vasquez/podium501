@@ -3,7 +3,7 @@ import { getDb } from '$lib/db';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
-	const { team_id, challenge_id, points, judge } = await request.json();
+	const { team_id, challenge_id, points, coach } = await request.json();
 	if (!team_id || !challenge_id || points === undefined) {
 		return json({ error: 'team_id, challenge_id, and points are required' }, { status: 400 });
 	}
@@ -11,6 +11,6 @@ export const POST: RequestHandler = async ({ request }) => {
 	const stmt = db.prepare(
 		'INSERT INTO score_events (team_id, challenge_id, points, judge) VALUES (?, ?, ?, ?)'
 	);
-	const result = stmt.run(Number(team_id), Number(challenge_id), Number(points), judge || 'Judge');
+	const result = stmt.run(Number(team_id), Number(challenge_id), Number(points), coach || 'Coach');
 	return json({ id: result.lastInsertRowid }, { status: 201 });
 };

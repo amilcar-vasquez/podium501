@@ -2,13 +2,13 @@ import { json } from '@sveltejs/kit';
 import { getDb } from '$lib/db';
 import type { RequestHandler } from './$types';
 
-// DELETE /api/scores/undo?team_id=X&challenge_id=Y[&judge=Name]
+// DELETE /api/scores/undo?team_id=X&challenge_id=Y[&coach=Name]
 // Removes the last score event for the team+challenge pair.
-// When `judge` is provided, only that judge's last event is removed.
+// When `coach` is provided, only that coach's last event is removed.
 export const DELETE: RequestHandler = ({ url }) => {
 	const team_id = Number(url.searchParams.get('team_id'));
 	const challenge_id = Number(url.searchParams.get('challenge_id'));
-	const judge = url.searchParams.get('judge') || null;
+	const coach = url.searchParams.get('coach') || null;
 
 	if (!team_id || !challenge_id) {
 		return json({ error: 'team_id and challenge_id are required' }, { status: 400 });
@@ -17,12 +17,12 @@ export const DELETE: RequestHandler = ({ url }) => {
 	const db = getDb();
 	let last: { id: number } | undefined;
 
-	if (judge) {
+	if (coach) {
 		last = db
 			.prepare(
 				'SELECT id FROM score_events WHERE team_id = ? AND challenge_id = ? AND judge = ? ORDER BY id DESC LIMIT 1'
 			)
-			.get(team_id, challenge_id, judge) as { id: number } | undefined;
+			.get(team_id, challenge_id, coach) as { id: number } | undefined;
 	} else {
 		last = db
 			.prepare(

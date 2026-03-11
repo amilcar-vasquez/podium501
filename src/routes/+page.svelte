@@ -1,10 +1,10 @@
 <div class="home">
-	<h1>🎯 Podium501</h1>
+	<h1><span class="material-icons" style="vertical-align:middle;font-size:2.5rem">sports_score</span> Podium501</h1>
 	<p>STEAM Competition Scoreboard</p>
 	<div class="links">
-		<a href="/judge" class="btn btn-primary">⚖️ Judge Interface</a>
-		<a href="/scoreboard" class="btn btn-secondary">🏆 Scoreboard</a>
-		<a href="/admin" class="btn btn-secondary">⚙️ Admin</a>
+		<a href="/coach" class="btn btn-primary"><span class="material-icons" style="vertical-align:middle;font-size:1rem">laptop</span> Coach Interface</a>
+		<a href="/scoreboard" class="btn btn-secondary"><span class="material-icons" style="vertical-align:middle;font-size:1rem">leaderboard</span> Scoreboard</a>
+		<a href="/admin" class="btn btn-secondary"><span class="material-icons" style="vertical-align:middle;font-size:1rem">settings</span> Admin</a>
 	</div>
 </div>
 

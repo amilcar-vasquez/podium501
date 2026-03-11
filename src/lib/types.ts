@@ -16,7 +16,7 @@ export interface ScoreEvent {
 	team_id: number;
 	challenge_id: number;
 	points: number;
-	judge: string;
+	coach: string;
 	created_at: string;
 }
 

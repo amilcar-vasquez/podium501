@@ -58,9 +58,9 @@ PINs are defined in [`src/routes/api/judge-login/+server.ts`](src/routes/api/jud
 
 ```ts
 const JUDGE_PINS: Record<string, string> = {
-  '1001': 'Maria',
-  '1002': 'Ana',
-  '1003': 'Coach Kim'
+  '1264': 'Maria',
+  '6564': 'Ana',
+  '8942': 'Coach Kim'
 };
 ```
 

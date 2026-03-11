@@ -1,11 +1,10 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 
-const DATA_DIR = join(process.cwd(), 'data');
+const DB_PATH = process.env.DB_PATH ?? join(process.cwd(), 'data', 'podium501.db');
+const DATA_DIR = dirname(DB_PATH);
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-
-const DB_PATH = join(DATA_DIR, 'podium501.db');
 
 let _db: Database.Database | null = null;
 
@@ -39,7 +38,7 @@ function migrate(db: Database.Database) {
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       challenge_id INTEGER NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
       points INTEGER NOT NULL,
-      judge TEXT NOT NULL DEFAULT 'Judge',
+      judge TEXT NOT NULL DEFAULT 'Coach',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);

@@ -12,6 +12,12 @@ node_modules
 .DS_Store
 Thumbs.db
 
+# Database
+data/
+*.db
+*.db-shm
+*.db-wal
+
 # Env
 .env
 .env.*

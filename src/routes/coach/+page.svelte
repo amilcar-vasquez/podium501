@@ -28,12 +28,12 @@
 	);
 
 	// --- PIN authentication ---
-	const PIN_KEY = 'podium501_judge_pin';
-	const NAME_KEY = 'podium501_judge_name';
+	const PIN_KEY = 'podium501_coach_pin';
+	const NAME_KEY = 'podium501_coach_name';
 
 	let mounted = $state(false);
 	let pinVerified = $state(false);
-	let judgeName = $state('');
+	let coachName = $state('');
 	let pinInput = $state('');
 	let pinError = $state('');
 	let isVerifying = $state(false);
@@ -45,7 +45,7 @@
 		const storedPin = localStorage.getItem(PIN_KEY);
 		const storedName = localStorage.getItem(NAME_KEY);
 		if (storedPin && storedName) {
-			judgeName = storedName;
+			coachName = storedName;
 			pinVerified = true;
 		}
 	});
@@ -56,7 +56,7 @@
 		isVerifying = true;
 		pinError = '';
 		try {
-			const res = await fetch('/api/judge-login', {
+			const res = await fetch('/api/coach-login', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ pin })
@@ -64,8 +64,8 @@
 			const result = await res.json();
 			if (result.success) {
 				localStorage.setItem(PIN_KEY, pin);
-				localStorage.setItem(NAME_KEY, result.judgeName);
-				judgeName = result.judgeName;
+				localStorage.setItem(NAME_KEY, result.coachName);
+				coachName = result.coachName;
 				pinVerified = true;
 			} else {
 				pinError = 'Invalid PIN. Try again.';
@@ -83,7 +83,7 @@
 		localStorage.removeItem(NAME_KEY);
 		pinVerified = false;
 		pinInput = '';
-		judgeName = '';
+		coachName = '';
 		reset();
 	}
 
@@ -134,7 +134,7 @@
 				team_id: selectedTeam.id,
 				challenge_id: selectedChallenge.id,
 				points,
-				judge: judgeName
+				coach: coachName
 			})
 		});
 		if (res.ok) {
@@ -149,11 +149,11 @@
 		const params = new URLSearchParams({
 			team_id: String(selectedTeam.id),
 			challenge_id: String(selectedChallenge.id),
-			judge: judgeName
+			coach: coachName
 		});
 		const res = await fetch(`/api/scores/undo?${params}`, { method: 'DELETE' });
 		if (res.ok) {
-			snackbar.show('↩ Last score undone');
+			snackbar.show('Last score undone');
 			await fetchTeamScores();
 		} else {
 			snackbar.show('Nothing to undo');
@@ -180,7 +180,7 @@
 </script>
 
 <svelte:head>
-	<title>Judge — Podium501</title>
+	<title>Coach — Podium501</title>
 </svelte:head>
 
 {#if !mounted}
@@ -190,11 +190,11 @@
 	<!-- PIN Login Screen -->
 	<div class="pin-screen">
 		<div class="pin-card card">
-			<div class="pin-icon">⚖️</div>
-			<h1 class="pin-title">Judge Access</h1>
+			<div class="pin-icon"><span class="material-icons">laptop</span></div>
+			<h1 class="pin-title">Coach Access</h1>
 			<p class="pin-subtitle">Enter your PIN to continue</p>
 			<div class="field">
-				<label for="pin-input">Judge PIN</label>
+				<label for="pin-input">Coach PIN</label>
 				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					id="pin-input"
@@ -220,12 +220,12 @@
 		</div>
 	</div>
 {:else}
-	<!-- Judge Scoring Interface -->
-	<div class="judge-page">
+	<!-- Coach Scoring Interface -->
+	<div class="coach-page">
 		<div class="header">
-			<h1 class="page-title">⚖️ Judge</h1>
-			<div class="judge-info">
-				<span class="judge-badge">👤 {judgeName}</span>
+			<h1 class="page-title"><span class="material-icons" style="vertical-align:middle;font-size:1.5rem">laptop</span> Coach</h1>
+			<div class="coach-info">
+				<span class="coach-badge"><span class="material-icons" style="vertical-align:middle;font-size:1rem">person</span> {coachName}</span>
 				<button class="btn btn-sm btn-secondary logout-btn" onclick={logout}>Log out</button>
 			</div>
 		</div>
@@ -250,7 +250,7 @@
 		<!-- Step 1: Select Challenge -->
 		{#if step === 1}
 			<section>
-				<p class="step-hint">Select a challenge to judge:</p>
+				<p class="step-hint">Select a challenge to score:</p>
 				{#if challenges.length === 0}
 					<p class="empty">No challenges yet. <a href="/admin">Add one in Admin</a>.</p>
 				{:else}
@@ -296,54 +296,60 @@
 		<!-- Step 3: Score -->
 		{#if step === 3}
 			<section>
-				<div class="score-context card">
-					<div class="score-badge" style="background: {selectedTeam?.color};">
-						{selectedTeam?.name[0]}
-					</div>
-					<div class="score-context-info">
-						<div class="score-team">{selectedTeam?.name}</div>
-						<div class="score-school">{selectedTeam?.school}</div>
-						<div class="score-challenge">📋 {selectedChallenge?.name}</div>
-						<div class="challenge-total">
-							This challenge so far:
-							<strong class:total-pos={currentChallengeTotal > 0} class:total-neg={currentChallengeTotal < 0}>
-								{currentChallengeTotal > 0 ? '+' : ''}{currentChallengeTotal} pts
-							</strong>
-						</div>
-					</div>
-				</div>
-
-				{#if teamScores.length > 0}
-					<div class="breakdown-card card">
-						<p class="breakdown-title">All challenges — {selectedTeam?.name}</p>
-						<div class="breakdown-rows">
-							{#each teamScores as s}
-								<div class="breakdown-row" class:breakdown-active={s.challenge_id === selectedChallenge?.id}>
-									<span class="breakdown-name">{s.challenge_name}</span>
-									<span class="breakdown-pts" class:pts-neg={s.points < 0}>
-										{s.points > 0 ? '+' : ''}{s.points}
-									</span>
+				<div class="step3-layout">
+					<div class="step3-left">
+						<div class="score-context card">
+							<div class="score-badge" style="background: {selectedTeam?.color};">
+								{selectedTeam?.name[0]}
+							</div>
+							<div class="score-context-info">
+								<div class="score-team">{selectedTeam?.name}</div>
+								<div class="score-school">{selectedTeam?.school}</div>
+								<div class="score-challenge"><span class="material-icons" style="vertical-align:middle;font-size:1rem">assignment</span> {selectedChallenge?.name}</div>
+								<div class="challenge-total">
+									This challenge so far:
+									<strong class:total-pos={currentChallengeTotal > 0} class:total-neg={currentChallengeTotal < 0}>
+										{currentChallengeTotal > 0 ? '+' : ''}{currentChallengeTotal} pts
+									</strong>
 								</div>
+							</div>
+						</div>
+
+						{#if teamScores.length > 0}
+							<div class="breakdown-card card">
+								<p class="breakdown-title">All challenges — {selectedTeam?.name}</p>
+								<div class="breakdown-rows">
+									{#each teamScores as s}
+										<div class="breakdown-row" class:breakdown-active={s.challenge_id === selectedChallenge?.id}>
+											<span class="breakdown-name">{s.challenge_name}</span>
+											<span class="breakdown-pts" class:pts-neg={s.points < 0}>
+												{s.points > 0 ? '+' : ''}{s.points}
+											</span>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/if}
+					</div>
+
+					<div class="step3-right">
+						<div class="score-buttons">
+							{#each SCORE_BUTTONS as btn}
+								<button
+									class="score-btn"
+									style="background: {btn.color};"
+									onclick={() => addScore(btn.points)}
+								>
+									{btn.label}
+								</button>
 							{/each}
 						</div>
-					</div>
-				{/if}
 
-				<div class="score-buttons">
-					{#each SCORE_BUTTONS as btn}
-						<button
-							class="score-btn"
-							style="background: {btn.color};"
-							onclick={() => addScore(btn.points)}
-						>
-							{btn.label}
+						<button class="btn btn-secondary undo-btn" onclick={undoLast}>
+							<span class="material-icons" style="vertical-align:middle;font-size:1rem">undo</span> Undo Last
 						</button>
-					{/each}
+					</div>
 				</div>
-
-				<button class="btn btn-secondary undo-btn" onclick={undoLast}>
-					↩ Undo Last
-				</button>
 			</section>
 		{/if}
 	</div>
@@ -408,8 +414,8 @@
 		padding: 0.875rem;
 	}
 
-	/* --- Judge Interface --- */
-	.judge-page {
+	/* --- Coach Interface --- */
+	.coach-page {
 		max-width: 600px;
 		margin: 0 auto;
 	}
@@ -423,13 +429,13 @@
 		margin-bottom: 1rem;
 	}
 
-	.judge-info {
+	.coach-info {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
 	}
 
-	.judge-badge {
+	.coach-badge {
 		font-size: 0.95rem;
 		color: #eaddff;
 		background: #3b3549;
@@ -659,5 +665,122 @@
 		color: var(--md-on-surface-variant);
 		padding: 2rem;
 		text-align: center;
+	}
+
+	/* step 3 two-column wrapper — single column by default (mobile) */
+	.step3-layout {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.step3-left,
+	.step3-right {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	/* ===== RESPONSIVE BREAKPOINTS ===== */
+
+	/* 768 px – tablet */
+	@media (min-width: 768px) {
+		.coach-page { max-width: 720px; }
+		.grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+		.score-btn { font-size: 2.25rem; padding: 2.25rem 1rem; }
+	}
+
+	/* 1200 px – desktop */
+	@media (min-width: 1200px) {
+		.coach-page { max-width: 860px; }
+		.grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+		.pick-title { font-size: 1.1rem; }
+		.score-btn { font-size: 2.5rem; padding: 2.5rem 1rem; }
+	}
+
+	/* 1400 px – large desktop */
+	@media (min-width: 1400px) {
+		.coach-page { max-width: 1000px; }
+		.page-title { font-size: 1.75rem; }
+		.step-hint { font-size: 1.1rem; }
+		.grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+		.pick-card { padding: 1.25rem; }
+		.score-team { font-size: 1.35rem; }
+		.score-badge { width: 3.5rem; height: 3.5rem; font-size: 1.75rem; }
+		.score-btn { font-size: 2.75rem; padding: 2.75rem 1rem; }
+		.undo-btn { font-size: 1.2rem; padding: 1.1rem; }
+	}
+
+	/* 1920 px – Full HD / projected display */
+	@media (min-width: 1920px) {
+		.coach-page { max-width: 1300px; }
+		.page-title { font-size: 2.25rem; }
+		.breadcrumb { font-size: 1.2rem; margin-bottom: 2rem; }
+		.step-hint { font-size: 1.3rem; margin-bottom: 1.5rem; }
+		.grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; }
+		.pick-card { padding: 1.5rem; }
+		.pick-title { font-size: 1.3rem; }
+		.pick-sub { font-size: 0.95rem; }
+		/* step 3: side-by-side */
+		.step3-layout { flex-direction: row; align-items: flex-start; gap: 2rem; }
+		.step3-left { flex: 1; }
+		.step3-right { flex: 1; }
+		.score-badge { width: 4.5rem; height: 4.5rem; font-size: 2.25rem; }
+		.score-team { font-size: 1.75rem; }
+		.score-school { font-size: 1rem; }
+		.score-challenge { font-size: 1rem; }
+		.challenge-total { font-size: 1rem; }
+		.challenge-total strong { font-size: 1.2rem; }
+		.breakdown-title { font-size: 0.9rem; }
+		.breakdown-row { font-size: 1.05rem; padding: 0.5rem 0.75rem; }
+		.score-btn { font-size: 3.5rem; padding: 3rem 1rem; }
+		.undo-btn { font-size: 1.4rem; padding: 1.25rem; }
+		.coach-badge { font-size: 1.1rem; padding: 0.5rem 1rem; }
+	}
+
+	/* 2560 px – QHD */
+	@media (min-width: 2560px) {
+		.coach-page { max-width: 1900px; }
+		.page-title { font-size: 3rem; }
+		.breadcrumb { font-size: 1.6rem; }
+		.step-hint { font-size: 1.75rem; margin-bottom: 2rem; }
+		.grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.5rem; }
+		.pick-card { padding: 2rem; }
+		.pick-title { font-size: 1.75rem; }
+		.pick-sub { font-size: 1.2rem; }
+		.step3-layout { gap: 3rem; }
+		.score-badge { width: 6rem; height: 6rem; font-size: 3rem; }
+		.score-team { font-size: 2.25rem; }
+		.score-school { font-size: 1.4rem; }
+		.score-challenge { font-size: 1.4rem; }
+		.challenge-total { font-size: 1.4rem; }
+		.challenge-total strong { font-size: 1.75rem; }
+		.breakdown-row { font-size: 1.4rem; padding: 0.75rem 1rem; }
+		.score-btn { font-size: 5rem; padding: 4rem 1rem; }
+		.undo-btn { font-size: 2rem; padding: 1.75rem; }
+		.coach-badge { font-size: 1.5rem; padding: 0.75rem 1.5rem; }
+	}
+
+	/* 3840 px – 4K / LED wall */
+	@media (min-width: 3840px) {
+		.coach-page { max-width: 2800px; }
+		.page-title { font-size: 4.5rem; }
+		.breadcrumb { font-size: 2.4rem; }
+		.step-hint { font-size: 2.5rem; margin-bottom: 3rem; }
+		.grid { grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 2rem; }
+		.pick-card { padding: 3rem; }
+		.pick-title { font-size: 2.5rem; }
+		.pick-sub { font-size: 1.8rem; }
+		.step3-layout { gap: 5rem; }
+		.score-badge { width: 9rem; height: 9rem; font-size: 4.5rem; }
+		.score-team { font-size: 3.5rem; }
+		.score-school { font-size: 2rem; }
+		.score-challenge { font-size: 2rem; }
+		.challenge-total { font-size: 2rem; }
+		.challenge-total strong { font-size: 2.5rem; }
+		.breakdown-row { font-size: 2rem; padding: 1.25rem 1.5rem; }
+		.score-btn { font-size: 7.5rem; padding: 6rem 1rem; border-radius: var(--radius-md); }
+		.undo-btn { font-size: 3rem; padding: 2.5rem; }
+		.coach-badge { font-size: 2.25rem; padding: 1rem 2rem; }
 	}
 </style>

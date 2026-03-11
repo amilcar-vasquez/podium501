@@ -25,9 +25,18 @@
 	let pollInterval: ReturnType<typeof setInterval>;
 	let milestoneBanner: string | null = $state(null);
 
+	// Wide-screen two-column layout
+	let isWide = $state(false);
+	let mq: MediaQueryList;
+	let mqHandler: (e: MediaQueryListEvent) => void;
+	let colSplit = $derived(Math.ceil(displayEntries.length / 2));
+	let colA = $derived(displayEntries.slice(0, colSplit));
+	let colB = $derived(displayEntries.slice(colSplit));
+	let useTwoCols = $derived(isWide && displayEntries.length >= 4);
+
 	const MILESTONES = [100, 200, 300, 500];
 	const RANK_COLORS = ['#d89e00', '#938f99', '#cd7f32'];
-	const RANK_EMOJI = ['🥇', '🥈', '🥉'];
+	const RANK_ICONS = ['emoji_events', 'workspace_premium', 'military_tech'];
 
 	async function fetchLeaderboard() {
 		try {
@@ -118,7 +127,7 @@
 			if (!reached.has(m) && prev < m && next >= m) {
 				reached.add(m);
 				triggerMilestoneConfetti();
-				milestoneBanner = `🏆 Milestone Reached! ${m}+ points!`;
+					milestoneBanner = `Milestone Reached! ${m}+ points!`;
 				setTimeout(() => {
 					milestoneBanner = null;
 				}, 3000);
@@ -130,9 +139,16 @@
 	onMount(() => {
 		fetchLeaderboard();
 		pollInterval = setInterval(fetchLeaderboard, 2000);
+		mq = window.matchMedia('(min-width: 1920px)');
+		isWide = mq.matches;
+		mqHandler = (e) => { isWide = e.matches; };
+		mq.addEventListener('change', mqHandler);
 	});
 
-	onDestroy(() => clearInterval(pollInterval));
+	onDestroy(() => {
+		clearInterval(pollInterval);
+		mq?.removeEventListener('change', mqHandler);
+	});
 </script>
 
 <svelte:head>
@@ -141,77 +157,98 @@
 
 <div class="scoreboard">
 	<div class="sb-header">
-		<h1>🏆 Live Scoreboard</h1>
+		<h1><span class="material-icons" style="vertical-align:middle;font-size:2rem">leaderboard</span> Live Scoreboard</h1>
 		<span class="pulse-dot" title="Live updates every 2s"></span>
 	</div>
 
 	{#if milestoneBanner}
 		<div class="milestone-banner" role="status">
-			{milestoneBanner}
+			<span class="material-icons" style="vertical-align:middle;font-size:1.2rem">emoji_events</span> {milestoneBanner}
 		</div>
 	{/if}
+
+	{#snippet tableHead()}
+		<thead>
+			<tr>
+				<th class="col-rank">Rank</th>
+				<th class="col-team">Team</th>
+				<th class="col-challenges">By Challenge</th>
+				<th class="col-score">Score</th>
+			</tr>
+		</thead>
+	{/snippet}
+
+	{#snippet tableRows(entries: DisplayEntry[])}
+		{#each entries as entry (entry.team_id)}
+			<tr class="team-row" class:score-updated={entry.flash} style="--tc: {entry.color}">
+				<td class="col-rank">
+					<span class="rank-badge" style="color: {RANK_COLORS[entry.rank - 1] ?? '#e6e1e5'}">
+					{#if entry.rank <= 3}
+						<span class="material-icons rank-icon">{RANK_ICONS[entry.rank - 1]}</span>
+					{:else}
+						{entry.rank}
+					{/if}
+					</span>
+				</td>
+				<td class="col-team">
+					<div class="team-name-wrap">
+						<span class="team-dot" style="background: {entry.color};"></span>
+						<span class="team-name">{entry.name}</span>
+					</div>
+				</td>
+				<td class="col-challenges">
+					{#if entry.challenges.length > 0}
+						<div class="challenge-pills">
+							{#each entry.challenges as cs}
+								<span class="challenge-pill" class:pill-neg={cs.points < 0}>
+									<span class="pill-name">{cs.challenge_name}</span>
+									<span class="pill-pts">{cs.points > 0 ? '+' : ''}{cs.points}</span>
+								</span>
+							{/each}
+						</div>
+					{:else}
+						<span class="no-scores">—</span>
+					{/if}
+				</td>
+				<td class="col-score">
+					<div class="score-wrap">
+						<span
+							class="score-chip"
+							class:chip-pop={entry.flash}
+							style="background: {entry.color}22; border: 1px solid {entry.color}66;"
+						>
+							{entry.displayTotal}
+						</span>
+						{#if entry.delta !== null}
+							{#key entry.popupKey}
+								<ScorePopup delta={entry.delta} />
+							{/key}
+						{/if}
+					</div>
+				</td>
+			</tr>
+		{/each}
+	{/snippet}
 
 	{#if displayEntries.length === 0}
 		<div class="empty-state">
 			<p>No teams yet. <a href="/admin">Add teams in Admin</a> and start scoring!</p>
 		</div>
+	{:else if useTwoCols}
+		<div class="sb-two-col">
+			<table class="leaderboard-table">
+				{@render tableHead()}
+				<tbody>{@render tableRows(colA)}</tbody>
+			</table>
+			<table class="leaderboard-table">
+				{@render tableHead()}
+				<tbody>{@render tableRows(colB)}</tbody>
+			</table>
+		</div>
 	{:else}
 		<table class="leaderboard-table">
-			<thead>
-				<tr>
-					<th class="col-rank">Rank</th>
-					<th class="col-team">Team</th>
-					<th class="col-challenges">By Challenge</th>
-					<th class="col-score">Score</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each displayEntries as entry (entry.team_id)}
-					<tr class:score-updated={entry.flash}>
-						<td class="col-rank">
-							<span class="rank-badge" style="color: {RANK_COLORS[entry.rank - 1] ?? '#e6e1e5'}">
-								{RANK_EMOJI[entry.rank - 1] ?? entry.rank}
-							</span>
-						</td>
-						<td class="col-team">
-							<div class="team-name-wrap">
-								<span class="team-dot" style="background: {entry.color};"></span>
-								<span class="team-name">{entry.name}</span>
-							</div>
-						</td>
-							<td class="col-challenges">
-								{#if entry.challenges.length > 0}
-									<div class="challenge-pills">
-										{#each entry.challenges as cs}
-											<span class="challenge-pill" class:pill-neg={cs.points < 0}>
-												<span class="pill-name">{cs.challenge_name}</span>
-												<span class="pill-pts">{cs.points > 0 ? '+' : ''}{cs.points}</span>
-											</span>
-										{/each}
-									</div>
-								{:else}
-									<span class="no-scores">—</span>
-								{/if}
-							</td>
-						<td class="col-score">
-							<div class="score-wrap">
-								<span
-									class="score-chip"
-									class:chip-pop={entry.flash}
-									style="background: {entry.color}22; border: 1px solid {entry.color}66;"
-								>
-									{entry.displayTotal}
-								</span>
-								{#if entry.delta !== null}
-									{#key entry.popupKey}
-										<ScorePopup delta={entry.delta} />
-									{/key}
-								{/if}
-							</div>
-						</td>
-					</tr>
-				{/each}
-			</tbody>
+			{@render tableHead()}
+			<tbody>{@render tableRows(displayEntries)}</tbody>
 		</table>
 	{/if}
 </div>
@@ -300,17 +337,18 @@
 		letter-spacing: 0.05em;
 	}
 
-	tbody tr {
-		background: #2b2930;
+	.team-row {
+		background: color-mix(in srgb, var(--tc, transparent) 7%, #2b2930);
 		border-radius: var(--radius-md);
 		transition: background 0.3s;
 	}
 
-	tbody tr td:first-child {
+	.team-row td:first-child {
 		border-radius: var(--radius-md) 0 0 var(--radius-md);
+		border-left: 3px solid color-mix(in srgb, var(--tc, #49454f) 55%, transparent);
 	}
 
-	tbody tr td:last-child {
+	.team-row td:last-child {
 		border-radius: 0 var(--radius-md) var(--radius-md) 0;
 	}
 
@@ -375,6 +413,11 @@
 	.rank-badge {
 		font-size: 1.5rem;
 		font-weight: 700;
+	}
+
+	.rank-icon {
+		font-size: 1.3rem;
+		vertical-align: middle;
 	}
 
 	.team-name-wrap {
@@ -445,6 +488,89 @@
 			background-color: #2b2930;
 			box-shadow: none;
 		}
+	}
+
+	/* ===== LARGE-SCREEN BREAKPOINTS ===== */
+
+	/* Two-column grid (activated via JS matchMedia at ≥ 1920 px) */
+	.sb-two-col {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 3rem;
+		align-items: start;
+	}
+
+	/* 1400 px – large desktop / small TV */
+	@media (min-width: 1400px) {
+		.scoreboard { max-width: 1400px; }
+		.sb-header h1 { font-size: 2.5rem; }
+		tbody td { padding: 1.1rem 1.25rem; }
+		.team-name { font-size: 1.2rem; }
+		.score-chip { font-size: 1.4rem; }
+		.rank-badge { font-size: 1.8rem; }
+		.rank-icon { font-size: 1.6rem; }
+		.team-dot { width: 1rem; height: 1rem; }
+		.challenge-pill { font-size: 0.85rem; padding: 0.25rem 0.65rem; }
+	}
+
+	/* 1920 px – Full HD TV / projector */
+	@media (min-width: 1920px) {
+		.scoreboard { max-width: 100%; padding: 0 3rem 2rem; }
+		.sb-header { margin-bottom: 2rem; justify-content: center; gap: 1.25rem; }
+		.sb-header h1 { font-size: 3.5rem; }
+		.pulse-dot { width: 1.1rem; height: 1.1rem; }
+		thead th { font-size: 1rem; padding: 0.75rem 1.5rem; letter-spacing: 0.07em; }
+		tbody td { padding: 1.4rem 1.5rem; }
+		.leaderboard-table { border-spacing: 0 0.6rem; }
+		.team-name { font-size: 1.5rem; }
+		.score-chip { font-size: 1.9rem; padding: 0.4rem 1.2rem; }
+		.rank-badge { font-size: 2.2rem; }
+		.rank-icon { font-size: 2rem; }
+		.col-rank { width: 6rem; }
+		.col-score { width: 12rem; }
+		.team-dot { width: 1.2rem; height: 1.2rem; }
+		.challenge-pill { font-size: 0.9rem; padding: 0.3rem 0.75rem; }
+		.milestone-banner { font-size: 2.5rem; padding: 1.25rem 2.5rem; }
+	}
+
+	/* 2560 px – QHD / large-format TV */
+	@media (min-width: 2560px) {
+		.sb-header { margin-bottom: 2.5rem; }
+		.sb-header h1 { font-size: 5rem; }
+		.pulse-dot { width: 1.4rem; height: 1.4rem; }
+		thead th { font-size: 1.2rem; padding: 1rem 2rem; }
+		tbody td { padding: 1.8rem 2rem; }
+		.leaderboard-table { border-spacing: 0 0.75rem; }
+		.team-name { font-size: 2rem; }
+		.score-chip { font-size: 2.6rem; padding: 0.5rem 1.5rem; }
+		.rank-badge { font-size: 3rem; }
+		.rank-icon { font-size: 2.75rem; }
+		.col-rank { width: 8rem; }
+		.col-score { width: 15rem; }
+		.team-dot { width: 1.5rem; height: 1.5rem; }
+		.challenge-pill { font-size: 1.1rem; padding: 0.4rem 1rem; }
+		.milestone-banner { font-size: 3.5rem; padding: 1.5rem 3rem; }
+		.sb-two-col { gap: 5rem; }
+	}
+
+	/* 3840 px – 4K / LED video wall */
+	@media (min-width: 3840px) {
+		.sb-header { margin-bottom: 3.5rem; }
+		.sb-header h1 { font-size: 7.5rem; }
+		.pulse-dot { width: 1.75rem; height: 1.75rem; }
+		thead th { font-size: 1.75rem; padding: 1.5rem 3rem; }
+		tbody td { padding: 2.5rem 3rem; }
+		.leaderboard-table { border-spacing: 0 1rem; }
+		.team-name { font-size: 3rem; }
+		.score-chip { font-size: 3.75rem; padding: 0.75rem 2rem; }
+		.rank-badge { font-size: 4.5rem; }
+		.rank-icon { font-size: 4.25rem; }
+		.col-rank { width: 12rem; }
+		.col-score { width: 22rem; }
+		.team-dot { width: 2rem; height: 2rem; }
+		.challenge-pill { font-size: 1.5rem; padding: 0.5rem 1.25rem; }
+		.milestone-banner { font-size: 5.5rem; padding: 2.5rem 5rem; border-radius: 2rem; }
+		.sb-two-col { gap: 8rem; }
 	}
 </style>
 

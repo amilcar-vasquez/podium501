@@ -26,7 +26,7 @@ export const GET: RequestHandler = () => {
 		created_at: string;
 	}>;
 
-	const header = 'Team,School,Challenge,Points,Judge,Created At\n';
+	const header = 'Team,School,Challenge,Points,Coach,Created At\n';
 	const body = rows
 		.map(
 			(r) =>

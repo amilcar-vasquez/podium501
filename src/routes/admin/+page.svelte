@@ -477,8 +477,14 @@
 
 	.admin-grid {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: 1fr;
 		gap: 1.5rem;
+	}
+
+	@media (min-width: 700px) {
+		.admin-grid {
+			grid-template-columns: 1fr 1fr;
+		}
 	}
 
 	h2 {

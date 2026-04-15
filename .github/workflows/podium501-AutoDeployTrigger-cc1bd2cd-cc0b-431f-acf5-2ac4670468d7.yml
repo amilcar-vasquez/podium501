@@ -38,7 +38,7 @@ jobs:
         with:
           appSourcePath: ${{ github.workspace }}
           dockerfilePath: ./Dockerfile
-          registryUrl: YOUR_ACR_NAME.azurecr.io
+          registryUrl: stuapps.azurecr.io
           registryUsername: ${{ secrets.PODIUM501_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.PODIUM501_REGISTRY_PASSWORD }}
           containerAppName: podium501

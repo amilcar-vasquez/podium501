@@ -79,10 +79,8 @@ jobs:
                 "initContainers": null,
                 "revisionSuffix": "",
                 "scale": {
-                  "cooldownPeriod": 300,
                   "maxReplicas": 1,
                   "minReplicas": 1,
-                  "pollingInterval": 30,
                   "rules": null
                 },
                 "serviceBinds": null,

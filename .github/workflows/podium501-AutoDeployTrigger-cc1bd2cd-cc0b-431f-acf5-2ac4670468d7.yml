@@ -43,4 +43,4 @@ jobs:
           registryPassword: ${{ secrets.PODIUM501_REGISTRY_PASSWORD }}
           containerAppName: podium501
           resourceGroup: STUApps
-          imageToBuild: YOUR_ACR_NAME.azurecr.io/podium501:${{ github.sha }}
+          imageToBuild: stuapps.azurecr.io/podium501:${{ github.sha }}

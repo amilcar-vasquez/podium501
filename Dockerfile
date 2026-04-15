@@ -9,7 +9,6 @@ COPY package*.json ./
 RUN npm ci
 
 ENV NODE_ENV=production
-ENV DATABASE_URL=/data/sqlite.db
 
 COPY . .
 # Ensure svelte.config.js is set to adapter-node before building

@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3';
-import { DATABASE_URL } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
-const DB_PATH = DATABASE_URL || 'local.db';
+const DB_PATH = env.DATABASE_URL || 'local.db';
 
 let _db: Database.Database | null = null;
 

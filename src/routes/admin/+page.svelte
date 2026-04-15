@@ -78,13 +78,29 @@
 	let newTableNumber = $state('');
 	let newTeamColor = $state('#6750A4');
 	let teamLoading = $state(false);
+	let editingTeamId = $state<number | null>(null);
+	let editTeamName = $state('');
+	let editTableNumber = $state('');
+	let editTeamColor = $state('#6750A4');
+	let savingTeamId = $state<number | null>(null);
 
 	// Challenge form
 	let newChallengeName = $state('');
 	let newChallengeDesc = $state('');
 	let challengeLoading = $state(false);
+	let editingChallengeId = $state<number | null>(null);
+	let editChallengeName = $state('');
+	let editChallengeDesc = $state('');
+	let savingChallengeId = $state<number | null>(null);
 
 	// ---- Teams ----
+	function getErrorMessage(e: unknown, fallback = 'Something went wrong') {
+		if (typeof e === 'object' && e !== null && 'error' in e && typeof e.error === 'string') {
+			return e.error;
+		}
+		return fallback;
+	}
+
 	async function addTeam() {
 		if (!newTeamName.trim()) return;
 		teamLoading = true;
@@ -105,6 +121,48 @@
 			snackbar.show(e.error);
 		}
 		teamLoading = false;
+	}
+
+	function startEditTeam(team: Team) {
+		editingTeamId = team.id;
+		editTeamName = team.name;
+		editTableNumber = team.table_number ?? '';
+		editTeamColor = team.color;
+	}
+
+	function cancelEditTeam() {
+		editingTeamId = null;
+		savingTeamId = null;
+	}
+
+	async function saveTeam(id: number) {
+		if (!editTeamName.trim()) {
+			snackbar.show('Team name is required');
+			return;
+		}
+
+		savingTeamId = id;
+		const res = await fetch(`/api/teams/${id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				name: editTeamName.trim(),
+				table_number: editTableNumber,
+				color: editTeamColor
+			})
+		});
+
+		if (res.ok) {
+			const updated: Team = await res.json();
+			teams = teams.map((t) => (t.id === id ? updated : t));
+			editingTeamId = null;
+			snackbar.show(`Team "${updated.name}" updated`);
+		} else {
+			const e = await res.json();
+			snackbar.show(getErrorMessage(e, 'Error updating team'));
+		}
+
+		savingTeamId = null;
 	}
 
 	async function deleteTeam(id: number, name: string) {
@@ -136,6 +194,46 @@
 		challengeLoading = false;
 	}
 
+	function startEditChallenge(challenge: Challenge) {
+		editingChallengeId = challenge.id;
+		editChallengeName = challenge.name;
+		editChallengeDesc = challenge.description ?? '';
+	}
+
+	function cancelEditChallenge() {
+		editingChallengeId = null;
+		savingChallengeId = null;
+	}
+
+	async function saveChallenge(id: number) {
+		if (!editChallengeName.trim()) {
+			snackbar.show('Challenge name is required');
+			return;
+		}
+
+		savingChallengeId = id;
+		const res = await fetch(`/api/challenges/${id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				name: editChallengeName.trim(),
+				description: editChallengeDesc
+			})
+		});
+
+		if (res.ok) {
+			const updated: Challenge = await res.json();
+			challenges = challenges.map((c) => (c.id === id ? updated : c));
+			editingChallengeId = null;
+			snackbar.show(`Challenge "${updated.name}" updated`);
+		} else {
+			const e = await res.json();
+			snackbar.show(getErrorMessage(e, 'Error updating challenge'));
+		}
+
+		savingChallengeId = null;
+	}
+
 	async function deleteChallenge(id: number, name: string) {
 		if (!confirm(`Delete challenge "${name}"? This will remove all associated scores.`)) return;
 		await fetch(`/api/challenges/${id}`, { method: 'DELETE' });
@@ -149,6 +247,11 @@
 	let newCoachTeamId = $state<number | ''>('');
 	let coachLoading = $state(false);
 	let revealedPin = $state<{ name: string; pin: string } | null>(null);
+	let editingCoachId = $state<number | null>(null);
+	let editCoachName = $state('');
+	let editCoachRole = $state<'coach' | 'admin'>('coach');
+	let editCoachTeamId = $state<number | ''>('');
+	let savingCoachId = $state<number | null>(null);
 
 	async function addCoach() {
 		if (!newCoachName.trim()) return;
@@ -179,6 +282,49 @@
 			coaches = coaches.filter((c) => c.id !== id);
 			snackbar.show(`Coach "${name}" removed`);
 		}
+	}
+
+	function startEditCoach(coach: Coach) {
+		editingCoachId = coach.id;
+		editCoachName = coach.name;
+		editCoachRole = coach.role;
+		editCoachTeamId = coach.team_id ?? '';
+	}
+
+	function cancelEditCoach() {
+		editingCoachId = null;
+		savingCoachId = null;
+	}
+
+	async function saveCoach(id: number) {
+		if (!editCoachName.trim()) {
+			snackbar.show('Coach name is required');
+			return;
+		}
+
+		savingCoachId = id;
+		const parsedTeamId = editCoachTeamId === '' ? null : Number(editCoachTeamId);
+		const res = await fetch(`/api/coaches/${id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				name: editCoachName.trim(),
+				role: editCoachRole,
+				team_id: parsedTeamId
+			})
+		});
+
+		if (res.ok) {
+			const updated: Coach = await res.json();
+			coaches = coaches.map((c) => (c.id === id ? updated : c));
+			editingCoachId = null;
+			snackbar.show(`Coach "${updated.name}" updated`);
+		} else {
+			const e = await res.json();
+			snackbar.show(getErrorMessage(e, 'Error updating coach'));
+		}
+
+		savingCoachId = null;
 	}
 	async function resetScores() {
 		if (!confirm('Reset ALL scores? This cannot be undone.')) return;
@@ -298,13 +444,31 @@
 				{#each teams as t (t.id)}
 					<li>
 						<span class="dot" style="background:{t.color};"></span>
-						<div class="item-info">
-							<strong>{t.name}</strong>
-							{#if t.table_number}<small>Table {t.table_number}</small>{/if}
-						</div>
-						<button class="btn btn-danger btn-sm" onclick={() => deleteTeam(t.id, t.name)}>
-							Delete
-						</button>
+						{#if editingTeamId === t.id}
+							<div class="item-info item-edit-form">
+								<input bind:value={editTeamName} placeholder="Team name" />
+								<input bind:value={editTableNumber} placeholder="Table number" />
+								<div class="inline-color">
+									<label for="edit-team-color-{t.id}">Color</label>
+									<input id="edit-team-color-{t.id}" type="color" bind:value={editTeamColor} class="color-native" />
+								</div>
+							</div>
+							<div class="row-actions">
+								<button class="btn btn-primary btn-sm" onclick={() => saveTeam(t.id)} disabled={savingTeamId === t.id}>
+									{savingTeamId === t.id ? 'Saving…' : 'Save'}
+								</button>
+								<button class="btn btn-secondary btn-sm" onclick={cancelEditTeam}>Cancel</button>
+							</div>
+						{:else}
+							<div class="item-info">
+								<strong>{t.name}</strong>
+								{#if t.table_number}<small>Table {t.table_number}</small>{/if}
+							</div>
+							<div class="row-actions">
+								<button class="btn btn-secondary btn-sm" onclick={() => startEditTeam(t)}>Edit</button>
+								<button class="btn btn-danger btn-sm" onclick={() => deleteTeam(t.id, t.name)}>Delete</button>
+							</div>
+						{/if}
 					</li>
 				{:else}
 					<li class="empty-item">No teams yet.</li>
@@ -334,13 +498,27 @@
 				{#each challenges as c (c.id)}
 					<li>
 						<span class="material-icons" style="color:#eaddff; font-size:1.1rem;">assignment</span>
-						<div class="item-info">
-							<strong>{c.name}</strong>
-							{#if c.description}<small>{c.description}</small>{/if}
-						</div>
-						<button class="btn btn-danger btn-sm" onclick={() => deleteChallenge(c.id, c.name)}>
-							Delete
-						</button>
+						{#if editingChallengeId === c.id}
+							<div class="item-info item-edit-form">
+								<input bind:value={editChallengeName} placeholder="Challenge name" />
+								<input bind:value={editChallengeDesc} placeholder="Description" />
+							</div>
+							<div class="row-actions">
+								<button class="btn btn-primary btn-sm" onclick={() => saveChallenge(c.id)} disabled={savingChallengeId === c.id}>
+									{savingChallengeId === c.id ? 'Saving…' : 'Save'}
+								</button>
+								<button class="btn btn-secondary btn-sm" onclick={cancelEditChallenge}>Cancel</button>
+							</div>
+						{:else}
+							<div class="item-info">
+								<strong>{c.name}</strong>
+								{#if c.description}<small>{c.description}</small>{/if}
+							</div>
+							<div class="row-actions">
+								<button class="btn btn-secondary btn-sm" onclick={() => startEditChallenge(c)}>Edit</button>
+								<button class="btn btn-danger btn-sm" onclick={() => deleteChallenge(c.id, c.name)}>Delete</button>
+							</div>
+						{/if}
 					</li>
 				{:else}
 					<li class="empty-item">No challenges yet.</li>
@@ -394,14 +572,40 @@
 				{#each coaches as c (c.id)}
 					<li>
 						<span class="material-icons" style="color:#cac4d0;font-size:1.1rem;flex-shrink:0">person</span>
-						<div class="item-info">
-							<strong>{c.name}</strong>
-							<small>
-								{c.role === 'admin' ? '⭐ Admin' : (c.team_name ? `Team: ${c.team_name}` : 'Unassigned')}
-								· PIN: <code class="pin-inline">{c.pin}</code>
-							</small>
-						</div>
-						<button class="btn btn-danger btn-sm" onclick={() => deleteCoach(c.id, c.name)}>Remove</button>
+						{#if editingCoachId === c.id}
+							<div class="item-info item-edit-form">
+								<input bind:value={editCoachName} placeholder="Coach name" />
+								<select bind:value={editCoachRole} class="select-input">
+									<option value="coach">Coach</option>
+									<option value="admin">Admin</option>
+								</select>
+								<select bind:value={editCoachTeamId} class="select-input">
+									<option value="">— Unassigned —</option>
+									{#each teams.filter((t) => t.id === c.team_id || !coaches.some((x) => x.id !== c.id && x.team_id === t.id)) as t}
+										<option value={t.id}>{t.name}</option>
+									{/each}
+								</select>
+								<small>PIN: <code class="pin-inline">{c.pin}</code> (unchanged)</small>
+							</div>
+							<div class="row-actions">
+								<button class="btn btn-primary btn-sm" onclick={() => saveCoach(c.id)} disabled={savingCoachId === c.id}>
+									{savingCoachId === c.id ? 'Saving…' : 'Save'}
+								</button>
+								<button class="btn btn-secondary btn-sm" onclick={cancelEditCoach}>Cancel</button>
+							</div>
+						{:else}
+							<div class="item-info">
+								<strong>{c.name}</strong>
+								<small>
+									{c.role === 'admin' ? '⭐ Admin' : (c.team_name ? `Team: ${c.team_name}` : 'Unassigned')}
+									· PIN: <code class="pin-inline">{c.pin}</code>
+								</small>
+							</div>
+							<div class="row-actions">
+								<button class="btn btn-secondary btn-sm" onclick={() => startEditCoach(c)}>Edit</button>
+								<button class="btn btn-danger btn-sm" onclick={() => deleteCoach(c.id, c.name)}>Remove</button>
+							</div>
+						{/if}
 					</li>
 				{:else}
 					<li class="empty-item">No coaches yet.</li>
@@ -552,6 +756,13 @@
 		padding: 0.625rem 0.75rem;
 	}
 
+	.row-actions {
+		display: flex;
+		gap: 0.45rem;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+	}
+
 	.dot {
 		width: 0.75rem;
 		height: 0.75rem;
@@ -565,6 +776,26 @@
 		flex-direction: column;
 		gap: 0.1rem;
 		font-size: 0.95rem;
+	}
+
+	.item-edit-form {
+		gap: 0.4rem;
+	}
+
+	.item-edit-form input,
+	.item-edit-form .select-input {
+		width: 100%;
+	}
+
+	.inline-color {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.inline-color label {
+		font-size: 0.8rem;
+		color: var(--md-on-surface-variant);
 	}
 
 	.item-info small {

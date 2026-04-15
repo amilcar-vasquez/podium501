@@ -1,49 +1,46 @@
 name: Trigger auto deployment for podium501
 
-# When this action will be executed
 on:
-  # Automatically trigger it when detected changes in repo
   push:
-    branches: 
-      [ main ]
-    paths:
-    - '**'
-    - '.github/workflows/podium501-AutoDeployTrigger-cc1bd2cd-cc0b-431f-acf5-2ac4670468d7.yml'
+    branches: [main]
+  workflow_dispatch:
 
-  # Allow manual trigger 
-  workflow_dispatch:      
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions: 
-      id-token: write #This is required for requesting the OIDC JWT Token
-      contents: read #Required when GH token is used to authenticate with private repo
 
     steps:
-      - name: Checkout to the branch
-        uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Azure Login
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          [[ -n "${{ secrets.PODIUM501_AZURE_CLIENT_ID }}" ]] || { echo "Missing PODIUM501_AZURE_CLIENT_ID"; exit 1; }
+          [[ -n "${{ secrets.PODIUM501_AZURE_TENANT_ID }}" ]] || { echo "Missing PODIUM501_AZURE_TENANT_ID"; exit 1; }
+          [[ -n "${{ secrets.PODIUM501_AZURE_SUBSCRIPTION_ID }}" ]] || { echo "Missing PODIUM501_AZURE_SUBSCRIPTION_ID"; exit 1; }
+          [[ -n "${{ secrets.PODIUM501_REGISTRY_USERNAME }}" ]] || { echo "Missing PODIUM501_REGISTRY_USERNAME"; exit 1; }
+          [[ -n "${{ secrets.PODIUM501_REGISTRY_PASSWORD }}" ]] || { echo "Missing PODIUM501_REGISTRY_PASSWORD"; exit 1; }
+
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.PODIUM501_AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.PODIUM501_AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.PODIUM501_AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push container image to registry
+      - name: Build and deploy Container App
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
-          registryUrl: 
+          dockerfilePath: ./Dockerfile
+          registryUrl: YOUR_ACR_NAME.azurecr.io
           registryUsername: ${{ secrets.PODIUM501_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.PODIUM501_REGISTRY_PASSWORD }}
           containerAppName: podium501
           resourceGroup: STUApps
-          imageToBuild: default/[parameters('containerAppName')]:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
-
-
+          imageToBuild: YOUR_ACR_NAME.azurecr.io/podium501:${{ github.sha }}

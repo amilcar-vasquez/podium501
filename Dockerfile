@@ -30,7 +30,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 
 # 2. Set the environment variable so your app knows where to find the DB
-ENV DATABASE_URL=/data/sqlite.db
+ENV DATABASE_URL=/data/podium501.db
 ENV PORT=3000
 
 # 3. Run as non-root for better security

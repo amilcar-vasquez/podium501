@@ -65,7 +65,7 @@ jobs:
                     "env": [
                       {
                         "name": "DATABASE_URL",
-                        "value": "/data/sqlite.db"
+                        "value": "/data/podium501.db"
                       }
                     ],
                     "volumeMounts": [

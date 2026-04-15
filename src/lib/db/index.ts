@@ -1,15 +1,16 @@
 import Database from 'better-sqlite3';
+import { DATABASE_URL } from '$env/static/private';
 import { existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
+import { dirname } from 'path';
 
-const DB_PATH = process.env.DB_PATH ?? join(process.cwd(), 'data', 'podium501.db');
-const DATA_DIR = dirname(DB_PATH);
-if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+const DB_PATH = DATABASE_URL || 'local.db';
 
 let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
 	if (!_db) {
+    const dataDir = dirname(DB_PATH);
+    if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 		_db = new Database(DB_PATH);
 		_db.pragma('journal_mode = WAL');
 		_db.pragma('foreign_keys = ON');

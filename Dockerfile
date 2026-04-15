@@ -8,10 +8,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-COPY . .
-RUN npm run build
+ENV NODE_ENV=production
+ENV DATABASE_URL=/data/sqlite.db
 
-# Remove devDependencies to keep the final image lean
+COPY . .
+# Ensure svelte.config.js is set to adapter-node before building
+RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: production ────────────────────────────────────────────────────────
@@ -19,11 +21,19 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
+# 1. Create a directory for the SQLite database and set permissions
+# Azure will mount the persistent volume here.
+RUN mkdir -p /data && chown -R node:node /data
+
 COPY --from=builder /app/build        ./build
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 
-ENV NODE_ENV=production
+# 2. Set the environment variable so your app knows where to find the DB
+ENV PORT=3000
+
+# 3. Run as non-root for better security
+USER node
 
 EXPOSE 3000
 

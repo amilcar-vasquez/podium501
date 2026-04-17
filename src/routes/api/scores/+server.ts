@@ -7,10 +7,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (!team_id || !challenge_id || points === undefined) {
 		return json({ error: 'team_id, challenge_id, and points are required' }, { status: 400 });
 	}
-	const db = getDb();
-	const stmt = db.prepare(
-		'INSERT INTO score_events (team_id, challenge_id, points, judge) VALUES (?, ?, ?, ?)'
+	const db = await getDb();
+	const { rows } = await db.query(
+		'INSERT INTO score_events (team_id, challenge_id, points, judge) VALUES ($1, $2, $3, $4) RETURNING id',
+		[Number(team_id), Number(challenge_id), Number(points), coach || 'Coach']
 	);
-	const result = stmt.run(Number(team_id), Number(challenge_id), Number(points), coach || 'Coach');
-	return json({ id: result.lastInsertRowid }, { status: 201 });
+	return json({ id: rows[0].id }, { status: 201 });
 };

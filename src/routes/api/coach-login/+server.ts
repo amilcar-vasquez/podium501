@@ -56,32 +56,31 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	// 2. Check coaches table
-	const db = getDb();
-	const coach = db
-		.prepare(
-			`SELECT
+	const db = await getDb();
+	const result = await db.query<{
+		name: string;
+		legacy_team_id: number | null;
+		role: string;
+		legacy_team_name: string | null;
+		team_ids_csv: string;
+		team_names_csv: string;
+	}>(
+		`SELECT
 				c.name,
 				c.team_id AS legacy_team_id,
 				c.role,
 				legacy_team.name AS legacy_team_name,
-				COALESCE(GROUP_CONCAT(ct.team_id), '') AS team_ids_csv,
-				COALESCE(GROUP_CONCAT(t.name), '') AS team_names_csv
+				COALESCE(STRING_AGG(ct.team_id::text, ',' ORDER BY ct.team_id), '') AS team_ids_csv,
+				COALESCE(STRING_AGG(t.name, ',' ORDER BY ct.team_id), '') AS team_names_csv
        FROM coaches c
 	       LEFT JOIN teams legacy_team ON legacy_team.id = c.team_id
 	       LEFT JOIN coach_teams ct ON ct.coach_id = c.id
 	       LEFT JOIN teams t ON t.id = ct.team_id
-       WHERE c.pin = ?`
-		)
-		.get(pin) as
-			| {
-					name: string;
-					legacy_team_id: number | null;
-					role: string;
-					legacy_team_name: string | null;
-					team_ids_csv: string;
-					team_names_csv: string;
-			  }
-			| undefined;
+       WHERE c.pin = $1
+		 GROUP BY c.name, c.team_id, c.role, legacy_team.name`,
+		[pin]
+	);
+	const coach = result.rows[0];
 
 	if (!coach) {
 		return json({ success: false, error: 'Invalid PIN' }, { status: 401 });
@@ -90,13 +89,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	let teamIds = coach.team_ids_csv
 		? coach.team_ids_csv
 				.split(',')
-				.map((v) => Number(v.trim()))
-				.filter((v) => Number.isInteger(v) && v > 0)
+				.map((v: string) => Number(v.trim()))
+				.filter((v: number) => Number.isInteger(v) && v > 0)
 		: [];
 	let teamNames = coach.team_names_csv
 		? coach.team_names_csv
 				.split(',')
-				.map((v) => v.trim())
+				.map((v: string) => v.trim())
 				.filter(Boolean)
 		: [];
 

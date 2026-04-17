@@ -1,63 +1,51 @@
-import Database from 'better-sqlite3';
+import { Pool } from 'pg';
 import { env } from '$env/dynamic/private';
-import { existsSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
 
-const DB_PATH = env.DATABASE_URL || 'local.db';
+const DEFAULT_DB_URL = 'postgresql://podium501:podium501@localhost:5432/podium501';
+const DB_URL = env.DATABASE_URL || DEFAULT_DB_URL;
 
-let _db: Database.Database | null = null;
+let _db: Pool | null = null;
+let _migrating: Promise<void> | null = null;
 
-export function getDb(): Database.Database {
+export async function getDb(): Promise<Pool> {
 	if (!_db) {
-    const dataDir = dirname(DB_PATH);
-    if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
-    const db = new Database(DB_PATH);
-    try {
-      db.pragma('busy_timeout = 5000');
-      try {
-        db.pragma('journal_mode = WAL');
-      } catch (error) {
-        // Azure File shares may not support WAL locks reliably; fall back to DELETE mode.
-        console.warn(`Falling back to DELETE journal mode for SQLite at ${DB_PATH}:`, error);
-        db.pragma('journal_mode = DELETE');
-      }
-      db.pragma('foreign_keys = ON');
-      migrate(db);
-      _db = db;
-    } catch (error) {
-      db.close();
-      throw error;
-    }
+		_db = new Pool({ connectionString: DB_URL, max: 10 });
 	}
+
+	if (!_migrating) {
+		_migrating = migrate(_db);
+	}
+
+	await _migrating;
 	return _db;
 }
 
-function migrate(db: Database.Database) {
-	db.exec(`
+async function migrate(db: Pool) {
+	await db.query(`
     CREATE TABLE IF NOT EXISTS teams (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       table_number TEXT NOT NULL DEFAULT '',
       color TEXT NOT NULL DEFAULT '#6750A4'
     );
 
     CREATE TABLE IF NOT EXISTS challenges (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       description TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS score_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       challenge_id INTEGER NOT NULL REFERENCES challenges(id) ON DELETE CASCADE,
       points INTEGER NOT NULL,
       judge TEXT NOT NULL DEFAULT 'Coach',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS coaches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
       name TEXT NOT NULL,
       pin TEXT NOT NULL UNIQUE,
       team_id INTEGER UNIQUE REFERENCES teams(id) ON DELETE SET NULL,
@@ -69,29 +57,28 @@ function migrate(db: Database.Database) {
       team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
       PRIMARY KEY (coach_id, team_id)
     );
+
+    ALTER TABLE teams ADD COLUMN IF NOT EXISTS table_number TEXT NOT NULL DEFAULT '';
+    ALTER TABLE teams ADD COLUMN IF NOT EXISTS color TEXT NOT NULL DEFAULT '#6750A4';
+    ALTER TABLE coaches ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'coach';
   `);
 
-	// Rename legacy 'school' column to 'table_number' if it still exists
-	const cols = db.prepare('PRAGMA table_info(teams)').all() as { name: string }[];
-	if (cols.some((c) => c.name === 'school') && !cols.some((c) => c.name === 'table_number')) {
-		db.exec('ALTER TABLE teams RENAME COLUMN school TO table_number');
+	const teamCols = await db.query<{ column_name: string }>(
+		`SELECT column_name FROM information_schema.columns WHERE table_name = 'teams'`
+	);
+  const teamColumnRows = teamCols.rows as Array<{ column_name: string }>;
+	if (
+    teamColumnRows.some((c: { column_name: string }) => c.column_name === 'school') &&
+    !teamColumnRows.some((c: { column_name: string }) => c.column_name === 'table_number')
+	) {
+		await db.query('ALTER TABLE teams RENAME COLUMN school TO table_number');
 	}
 
-	// Add role column to coaches if it doesn't exist yet (migration for existing DBs)
-	const coachCols = db.prepare('PRAGMA table_info(coaches)').all() as { name: string }[];
-	if (coachCols.length > 0 && !coachCols.some((c) => c.name === 'role')) {
-		db.exec("ALTER TABLE coaches ADD COLUMN role TEXT NOT NULL DEFAULT 'coach'");
-	}
-
-  // Backfill legacy coaches.team_id into coach_teams for existing databases.
-  if (coachCols.some((c) => c.name === 'team_id')) {
-    const legacyAssignments = db
-      .prepare('SELECT id, team_id FROM coaches WHERE team_id IS NOT NULL')
-      .all() as { id: number; team_id: number }[];
-    const insertAssignment = db.prepare('INSERT OR IGNORE INTO coach_teams (coach_id, team_id) VALUES (?, ?)');
-    const backfill = db.transaction((rows: { id: number; team_id: number }[]) => {
-      for (const row of rows) insertAssignment.run(row.id, row.team_id);
-    });
-    backfill(legacyAssignments);
-  }
+	await db.query(`
+    INSERT INTO coach_teams (coach_id, team_id)
+    SELECT id, team_id
+    FROM coaches
+    WHERE team_id IS NOT NULL
+    ON CONFLICT (coach_id, team_id) DO NOTHING
+  `);
 }

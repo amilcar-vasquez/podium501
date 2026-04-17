@@ -11,21 +11,19 @@ export interface BreakdownRow {
 
 // GET /api/scores/breakdown
 // Returns the sum of score_events per team per challenge (only non-zero rows).
-export const GET: RequestHandler = () => {
-	const db = getDb();
-	const rows = db
-		.prepare(
-			`SELECT
+export const GET: RequestHandler = async () => {
+	const db = await getDb();
+	const { rows } = await db.query<BreakdownRow>(
+		`SELECT
         se.team_id,
         c.id   AS challenge_id,
         c.name AS challenge_name,
-        SUM(se.points) AS points
+        SUM(se.points)::int AS points
       FROM score_events se
       JOIN challenges c ON c.id = se.challenge_id
-      GROUP BY se.team_id, se.challenge_id
+      GROUP BY se.team_id, se.challenge_id, c.id, c.name
       ORDER BY se.team_id, c.name ASC`
-		)
-		.all() as BreakdownRow[];
+	);
 
 	return json(rows);
 };

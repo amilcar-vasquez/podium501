@@ -5,7 +5,7 @@ import type { RequestHandler } from './$types';
 // DELETE /api/scores/undo?team_id=X&challenge_id=Y[&coach=Name]
 // Removes the last score event for the team+challenge pair.
 // When `coach` is provided, only that coach's last event is removed.
-export const DELETE: RequestHandler = ({ url }) => {
+export const DELETE: RequestHandler = async ({ url }) => {
 	const team_id = Number(url.searchParams.get('team_id'));
 	const challenge_id = Number(url.searchParams.get('challenge_id'));
 	const coach = url.searchParams.get('coach') || null;
@@ -14,24 +14,24 @@ export const DELETE: RequestHandler = ({ url }) => {
 		return json({ error: 'team_id and challenge_id are required' }, { status: 400 });
 	}
 
-	const db = getDb();
+	const db = await getDb();
 	let last: { id: number } | undefined;
 
 	if (coach) {
-		last = db
-			.prepare(
-				'SELECT id FROM score_events WHERE team_id = ? AND challenge_id = ? AND judge = ? ORDER BY id DESC LIMIT 1'
-			)
-			.get(team_id, challenge_id, coach) as { id: number } | undefined;
+		const result = await db.query<{ id: number }>(
+			'SELECT id FROM score_events WHERE team_id = $1 AND challenge_id = $2 AND judge = $3 ORDER BY id DESC LIMIT 1',
+			[team_id, challenge_id, coach]
+		);
+		last = result.rows[0];
 	} else {
-		last = db
-			.prepare(
-				'SELECT id FROM score_events WHERE team_id = ? AND challenge_id = ? ORDER BY id DESC LIMIT 1'
-			)
-			.get(team_id, challenge_id) as { id: number } | undefined;
+		const result = await db.query<{ id: number }>(
+			'SELECT id FROM score_events WHERE team_id = $1 AND challenge_id = $2 ORDER BY id DESC LIMIT 1',
+			[team_id, challenge_id]
+		);
+		last = result.rows[0];
 	}
 
 	if (!last) return json({ error: 'No events to undo' }, { status: 404 });
-	db.prepare('DELETE FROM score_events WHERE id = ?').run(last.id);
+	await db.query('DELETE FROM score_events WHERE id = $1', [last.id]);
 	return json({ ok: true, deleted_id: last.id });
 };

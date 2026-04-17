@@ -31,13 +31,16 @@
 	const PIN_KEY = 'podium501_coach_pin';
 	const NAME_KEY = 'podium501_coach_name';
 	const TEAM_KEY = 'podium501_coach_team_id';
+	const TEAM_IDS_KEY = 'podium501_coach_team_ids';
 	const ROLE_KEY = 'podium501_coach_role';
 
 	let mounted = $state(false);
 	let pinVerified = $state(false);
 	let coachName = $state('');
-	let assignedTeamId = $state<number | null>(null);
-	let assignedTeam = $derived(assignedTeamId ? (teams.find((t) => t.id === assignedTeamId) ?? null) : null);
+	let assignedTeamIds = $state<number[]>([]);
+	let assignedTeams = $derived(teams.filter((t) => assignedTeamIds.includes(t.id)));
+	let singleAssignedTeam = $derived(assignedTeams.length === 1 ? assignedTeams[0] : null);
+	let restrictedTeams = $derived(assignedTeamIds.length > 0 ? assignedTeams : teams);
 	let pinInput = $state('');
 	let pinError = $state('');
 	let isVerifying = $state(false);
@@ -48,10 +51,27 @@
 		mounted = true;
 		const storedPin = localStorage.getItem(PIN_KEY);
 		const storedName = localStorage.getItem(NAME_KEY);
+		const storedTeamIds = localStorage.getItem(TEAM_IDS_KEY);
 		const storedTeamId = localStorage.getItem(TEAM_KEY);
 		if (storedPin && storedName) {
 			coachName = storedName;
-			if (storedTeamId) assignedTeamId = Number(storedTeamId);
+			if (storedTeamIds) {
+				try {
+					const parsed = JSON.parse(storedTeamIds);
+					if (Array.isArray(parsed)) {
+						assignedTeamIds = parsed
+							.map((v) => Number(v))
+							.filter((v) => Number.isInteger(v) && v > 0);
+					}
+				} catch {
+					// Ignore invalid local cache
+				}
+			} else if (storedTeamId) {
+				const parsed = Number(storedTeamId);
+				if (Number.isInteger(parsed) && parsed > 0) {
+					assignedTeamIds = [parsed];
+				}
+			}
 			pinVerified = true;
 		}
 	});
@@ -72,12 +92,17 @@
 				localStorage.setItem(PIN_KEY, pin);
 				localStorage.setItem(NAME_KEY, result.coachName);
 				localStorage.setItem(ROLE_KEY, result.role ?? 'coach');
-				if (result.teamId) {
-					localStorage.setItem(TEAM_KEY, String(result.teamId));
-					assignedTeamId = result.teamId;
+				const ids = Array.isArray(result.teamIds)
+					? result.teamIds.map((v: unknown) => Number(v)).filter((v: number) => Number.isInteger(v) && v > 0)
+					: result.teamId
+						? [Number(result.teamId)]
+						: [];
+				assignedTeamIds = ids;
+				localStorage.setItem(TEAM_IDS_KEY, JSON.stringify(ids));
+				if (ids.length > 0) {
+					localStorage.setItem(TEAM_KEY, String(ids[0]));
 				} else {
 					localStorage.removeItem(TEAM_KEY);
-					assignedTeamId = null;
 				}
 				coachName = result.coachName;
 				pinVerified = true;
@@ -96,9 +121,10 @@
 		localStorage.removeItem(PIN_KEY);
 		localStorage.removeItem(NAME_KEY);
 		localStorage.removeItem(TEAM_KEY);
+		localStorage.removeItem(TEAM_IDS_KEY);
 		localStorage.removeItem(ROLE_KEY);
 		pinVerified = false;
-		assignedTeamId = null;
+		assignedTeamIds = [];
 		pinInput = '';
 		coachName = '';
 		reset();
@@ -179,8 +205,8 @@
 
 	function selectChallenge(c: Challenge) {
 		selectedChallenge = c;
-		if (assignedTeam) {
-			selectTeam(assignedTeam);
+		if (singleAssignedTeam) {
+			selectTeam(singleAssignedTeam);
 		} else {
 			step = 2;
 		}
@@ -254,7 +280,7 @@
 		<!-- Breadcrumb -->
 		<div class="breadcrumb">
 			<button onclick={reset} class:active={step === 1}>1. Challenge</button>
-			{#if !assignedTeam}
+			{#if !singleAssignedTeam}
 				<span>›</span>
 				<button
 					onclick={() => {
@@ -267,7 +293,7 @@
 				</button>
 			{/if}
 			<span>›</span>
-			<button class:active={step === 3} disabled={step < 3}>{assignedTeam ? '2.' : '3.'} Score</button>
+			<button class:active={step === 3} disabled={step < 3}>{singleAssignedTeam ? '2.' : '3.'} Score</button>
 		</div>
 
 		<!-- Step 1: Select Challenge -->
@@ -297,11 +323,11 @@
 				<p class="step-hint">
 					Challenge: <strong>{selectedChallenge?.name}</strong> — Select team:
 				</p>
-				{#if teams.length === 0}
+				{#if restrictedTeams.length === 0}
 					<p class="empty">No teams yet. <a href="/admin">Add one in Admin</a>.</p>
 				{:else}
 					<div class="grid">
-						{#each teams as t}
+						{#each restrictedTeams as t}
 							<button
 								class="pick-card team-card"
 								style="border-left: 6px solid {t.color};"

@@ -244,14 +244,32 @@
 	// ---- Coaches ----
 	let newCoachName = $state('');
 	let newCoachRole = $state<'coach' | 'admin'>('coach');
-	let newCoachTeamId = $state<number | ''>('');
+	let newCoachTeamIds = $state<number[]>([]);
 	let coachLoading = $state(false);
 	let revealedPin = $state<{ name: string; pin: string } | null>(null);
 	let editingCoachId = $state<number | null>(null);
 	let editCoachName = $state('');
 	let editCoachRole = $state<'coach' | 'admin'>('coach');
-	let editCoachTeamId = $state<number | ''>('');
+	let editCoachTeamIds = $state<number[]>([]);
 	let savingCoachId = $state<number | null>(null);
+
+	function coachTeamIds(coach: Coach): number[] {
+		if (Array.isArray(coach.team_ids) && coach.team_ids.length > 0) return coach.team_ids;
+		return coach.team_id ? [coach.team_id] : [];
+	}
+
+	function coachTeamNames(coach: Coach): string[] {
+		if (Array.isArray(coach.team_names) && coach.team_names.length > 0) return coach.team_names;
+		return coach.team_name ? [coach.team_name] : [];
+	}
+
+	function toggleTeamSelection(list: number[], teamId: number, checked: boolean): number[] {
+		if (checked) {
+			if (list.includes(teamId)) return list;
+			return [...list, teamId];
+		}
+		return list.filter((id) => id !== teamId);
+	}
 
 	async function addCoach() {
 		if (!newCoachName.trim()) return;
@@ -259,14 +277,14 @@
 		const res = await fetch('/api/coaches', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ name: newCoachName.trim(), team_id: newCoachTeamId || null, role: newCoachRole })
+			body: JSON.stringify({ name: newCoachName.trim(), team_ids: newCoachTeamIds, role: newCoachRole })
 		});
 		if (res.ok) {
 			const c = await res.json();
 			coaches = [...coaches, c];
 			revealedPin = { name: c.name, pin: c.pin };
 			newCoachName = '';
-			newCoachTeamId = '';
+			newCoachTeamIds = [];
 			newCoachRole = 'coach';
 		} else {
 			const e = await res.json();
@@ -288,7 +306,7 @@
 		editingCoachId = coach.id;
 		editCoachName = coach.name;
 		editCoachRole = coach.role;
-		editCoachTeamId = coach.team_id ?? '';
+		editCoachTeamIds = coachTeamIds(coach);
 	}
 
 	function cancelEditCoach() {
@@ -303,14 +321,13 @@
 		}
 
 		savingCoachId = id;
-		const parsedTeamId = editCoachTeamId === '' ? null : Number(editCoachTeamId);
 		const res = await fetch(`/api/coaches/${id}`, {
 			method: 'PUT',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				name: editCoachName.trim(),
 				role: editCoachRole,
-				team_id: parsedTeamId
+				team_ids: editCoachTeamIds
 			})
 		});
 
@@ -555,13 +572,26 @@
 					</select>
 				</div>
 				<div class="field">
-					<label for="coach-team">Assign to team</label>
-					<select id="coach-team" bind:value={newCoachTeamId} class="select-input">
-						<option value="">— Unassigned —</option>
-						{#each teams.filter(t => !coaches.some(c => c.team_id === t.id)) as t}
-							<option value={t.id}>{t.name}</option>
-						{/each}
-					</select>
+					<div class="group-label">Assign tables</div>
+					<div class="team-checkbox-group">
+						{#if teams.length === 0}
+							<small>No teams created yet.</small>
+						{:else}
+							{#each teams as t}
+								<label class="team-checkbox-row">
+									<input
+										type="checkbox"
+										checked={newCoachTeamIds.includes(t.id)}
+										onchange={(e) => {
+											const checked = (e.currentTarget as HTMLInputElement).checked;
+											newCoachTeamIds = toggleTeamSelection(newCoachTeamIds, t.id, checked);
+										}}
+									/>
+									<span>{t.name}{t.table_number ? ` (Table ${t.table_number})` : ''}</span>
+								</label>
+							{/each}
+						{/if}
+					</div>
 				</div>
 				<button class="btn btn-primary" type="submit" disabled={coachLoading}>
 					{coachLoading ? 'Adding…' : '+ Add Coach'}
@@ -579,12 +609,25 @@
 									<option value="coach">Coach</option>
 									<option value="admin">Admin</option>
 								</select>
-								<select bind:value={editCoachTeamId} class="select-input">
-									<option value="">— Unassigned —</option>
-									{#each teams.filter((t) => t.id === c.team_id || !coaches.some((x) => x.id !== c.id && x.team_id === t.id)) as t}
-										<option value={t.id}>{t.name}</option>
-									{/each}
-								</select>
+								<div class="team-checkbox-group">
+									{#if teams.length === 0}
+										<small>No teams created yet.</small>
+									{:else}
+										{#each teams as t}
+											<label class="team-checkbox-row">
+												<input
+													type="checkbox"
+													checked={editCoachTeamIds.includes(t.id)}
+													onchange={(e) => {
+														const checked = (e.currentTarget as HTMLInputElement).checked;
+														editCoachTeamIds = toggleTeamSelection(editCoachTeamIds, t.id, checked);
+													}}
+												/>
+												<span>{t.name}{t.table_number ? ` (Table ${t.table_number})` : ''}</span>
+											</label>
+										{/each}
+									{/if}
+								</div>
 								<small>PIN: <code class="pin-inline">{c.pin}</code> (unchanged)</small>
 							</div>
 							<div class="row-actions">
@@ -597,7 +640,9 @@
 							<div class="item-info">
 								<strong>{c.name}</strong>
 								<small>
-									{c.role === 'admin' ? '⭐ Admin' : (c.team_name ? `Team: ${c.team_name}` : 'Unassigned')}
+									{c.role === 'admin'
+										? '⭐ Admin'
+										: (coachTeamNames(c).length > 0 ? `Tables: ${coachTeamNames(c).join(', ')}` : 'Unassigned')}
 									· PIN: <code class="pin-inline">{c.pin}</code>
 								</small>
 							</div>
@@ -858,6 +903,36 @@
 		background: #2b2930;
 		color: #e6e1e5;
 		font-size: 0.95rem;
+	}
+
+	.team-checkbox-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		max-height: 10rem;
+		overflow: auto;
+		padding: 0.55rem 0.65rem;
+		border: 1px solid #49454f;
+		border-radius: var(--radius-sm);
+		background: #2b2930;
+	}
+
+	.group-label {
+		font-size: 0.85rem;
+		color: #c8c2cf;
+		margin-bottom: 0.35rem;
+	}
+
+	.team-checkbox-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.9rem;
+		color: #e6e1e5;
+	}
+
+	.team-checkbox-row input {
+		accent-color: #8bb7ff;
 	}
 
 	.danger-zone {

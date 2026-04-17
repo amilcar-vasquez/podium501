@@ -15,6 +15,8 @@ export interface Coach {
 	id: number;
 	name: string;
 	pin: string;
+	team_ids: number[];
+	team_names: string[];
 	team_id: number | null;
 	team_name: string | null;
 	role: 'coach' | 'admin';

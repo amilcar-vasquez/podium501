@@ -44,23 +44,74 @@ export const POST: RequestHandler = async ({ request }) => {
 	// 1. Check static env-var pins (admin / master access — no team assignment)
 	const staticName = loadStaticPins()[pin];
 	if (staticName) {
-		return json({ success: true, coachName: staticName, teamId: null, teamName: null, role: 'admin' });
+		return json({
+			success: true,
+			coachName: staticName,
+			teamIds: [],
+			teamNames: [],
+			teamId: null,
+			teamName: null,
+			role: 'admin'
+		});
 	}
 
 	// 2. Check coaches table
 	const db = getDb();
 	const coach = db
 		.prepare(
-			`SELECT c.name, c.team_id, c.role, t.name AS team_name
+			`SELECT
+				c.name,
+				c.team_id AS legacy_team_id,
+				c.role,
+				legacy_team.name AS legacy_team_name,
+				COALESCE(GROUP_CONCAT(ct.team_id), '') AS team_ids_csv,
+				COALESCE(GROUP_CONCAT(t.name), '') AS team_names_csv
        FROM coaches c
-       LEFT JOIN teams t ON t.id = c.team_id
+	       LEFT JOIN teams legacy_team ON legacy_team.id = c.team_id
+	       LEFT JOIN coach_teams ct ON ct.coach_id = c.id
+	       LEFT JOIN teams t ON t.id = ct.team_id
        WHERE c.pin = ?`
 		)
-		.get(pin) as { name: string; team_id: number | null; role: string; team_name: string | null } | undefined;
+		.get(pin) as
+			| {
+					name: string;
+					legacy_team_id: number | null;
+					role: string;
+					legacy_team_name: string | null;
+					team_ids_csv: string;
+					team_names_csv: string;
+			  }
+			| undefined;
 
 	if (!coach) {
 		return json({ success: false, error: 'Invalid PIN' }, { status: 401 });
 	}
 
-	return json({ success: true, coachName: coach.name, teamId: coach.team_id, teamName: coach.team_name, role: coach.role });
+	let teamIds = coach.team_ids_csv
+		? coach.team_ids_csv
+				.split(',')
+				.map((v) => Number(v.trim()))
+				.filter((v) => Number.isInteger(v) && v > 0)
+		: [];
+	let teamNames = coach.team_names_csv
+		? coach.team_names_csv
+				.split(',')
+				.map((v) => v.trim())
+				.filter(Boolean)
+		: [];
+
+	if (teamIds.length === 0 && coach.legacy_team_id) {
+		teamIds = [coach.legacy_team_id];
+		teamNames = coach.legacy_team_name ? [coach.legacy_team_name] : [];
+	}
+
+	return json({
+		success: true,
+		coachName: coach.name,
+		teamIds,
+		teamNames,
+		teamId: teamIds[0] ?? null,
+		teamName: teamNames[0] ?? null,
+		role: coach.role
+	});
 };

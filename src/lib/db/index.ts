@@ -13,7 +13,14 @@ export function getDb(): Database.Database {
     if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
     const db = new Database(DB_PATH);
     try {
-      db.pragma('journal_mode = WAL');
+      db.pragma('busy_timeout = 5000');
+      try {
+        db.pragma('journal_mode = WAL');
+      } catch (error) {
+        // Azure File shares may not support WAL locks reliably; fall back to DELETE mode.
+        console.warn(`Falling back to DELETE journal mode for SQLite at ${DB_PATH}:`, error);
+        db.pragma('journal_mode = DELETE');
+      }
       db.pragma('foreign_keys = ON');
       migrate(db);
       _db = db;
